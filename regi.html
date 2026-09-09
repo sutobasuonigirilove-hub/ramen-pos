@@ -4,7 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>ラーメン屋POSレジ</title>
+  <!-- Excel解析 & バーコード生成ライブラリ -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <style>
     :root {
       --primary: #d97706;
@@ -15,6 +17,7 @@
       --card: #1e293b;
       --border: #334155;
       --text: #f8fafc;
+      --accent: #f59e0b;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body { background: var(--bg); color: var(--text); padding: 12px; touch-action: manipulation; }
@@ -40,11 +43,22 @@
     .item-price-txt { font-size: 14px; font-weight: 800; color: #1e293b; }
 
     /* 伝票 */
-    .order-list { min-height: 280px; max-height: 380px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; background: #0b1120; margin-bottom: 12px; }
-    .order-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 10px; border-bottom: 1px solid #1e293b; font-size: 15px; }
+    .order-list { min-height: 240px; max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; background: #0b1120; margin-bottom: 10px; }
+    .order-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 10px; border-bottom: 1px solid #1e293b; font-size: 14px; }
     .del-item { color: var(--danger); cursor: pointer; font-weight: bold; padding: 0 8px; font-size: 18px; }
 
-    .total-bar { display: flex; justify-content: space-between; align-items: baseline; background: #182234; padding: 14px; border-radius: 8px; margin-bottom: 10px; }
+    /* クーポン表示行 */
+    .coupon-applied-box {
+      background: rgba(245, 158, 11, 0.15); border: 1px dashed var(--accent); border-radius: 6px; padding: 8px 12px; margin-bottom: 10px;
+      display: none; justify-content: space-between; align-items: center; font-size: 14px;
+    }
+    .coupon-cancel { color: var(--danger); font-size: 13px; font-weight: bold; cursor: pointer; margin-left: 8px; text-decoration: underline; }
+
+    .action-sub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+    .sub-btn { background: #334155; color: white; border: 1px solid #475569; padding: 10px; border-radius: 6px; font-weight: bold; font-size: 13px; cursor: pointer; }
+    .sub-btn:hover { background: #475569; }
+
+    .total-bar { display: flex; justify-content: space-between; align-items: baseline; background: #182234; padding: 12px 14px; border-radius: 8px; margin-bottom: 10px; }
     .open-pay-btn { width: 100%; background: #ea580c; color: white; border: none; padding: 16px; border-radius: 8px; font-size: 20px; font-weight: bold; cursor: pointer; }
     .open-pay-btn:disabled { background: #475569; }
 
@@ -52,9 +66,11 @@
     .excel-zone label { cursor: pointer; color: #38bdf8; font-size: 13px; font-weight: bold; display: block; }
     .excel-zone input { display: none; }
 
-    /* オプション選択モーダル */
+    /* モーダル共通スタイル */
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: none; justify-content: center; align-items: center; z-index: 1000; }
     .modal { background: #1e293b; border: 1px solid var(--border); border-radius: 12px; width: 90%; max-width: 440px; padding: 20px; }
+
+    /* オプション選択モーダル */
     .modal-opts { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; max-height: 250px; overflow-y: auto; }
     .opt-btn { background: #334155; color: #f8fafc; border: 1px solid #475569; padding: 10px 14px; border-radius: 20px; cursor: pointer; font-size: 14px; }
     .opt-btn.selected { background: #ea580c; border-color: #f97316; font-weight: bold; }
@@ -87,132 +103,49 @@
     .btn-paypay { background: var(--paypay); }
 
     /* =========================================================
-       写真デザイン完全再現：レシートレイアウト
+       バーコードつきレシート印字スタイル
        ========================================================= */
     #receiptContainer { display: none; }
 
     @media print {
-      @page {
-        margin: 0;
-        size: 80mm auto; /* 58mm〜80mmサーマルロール対応 */
-      }
-      body {
-        background: #fff !important;
-        color: #000 !important;
-      }
-      body * {
-        visibility: hidden;
-      }
-      #receiptContainer, #receiptContainer * {
-        visibility: visible;
-      }
+      @page { margin: 0; size: 80mm auto; }
+      body { background: #fff !important; color: #000 !important; }
+      body * { visibility: hidden; }
+      #receiptContainer, #receiptContainer * { visibility: visible; }
       #receiptContainer {
-        display: block !important;
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 72mm; /* 印字可能領域 */
-        margin: 0 auto;
-        padding: 4mm 2mm;
-        color: #000;
-        background: #fff;
-        font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "MS Gothic", monospace;
+        display: block !important; position: absolute; left: 0; top: 0; width: 72mm; margin: 0 auto; padding: 4mm 2mm;
+        color: #000; background: #fff; font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", monospace;
       }
-
-      .rc-header-meta {
-        font-size: 9px;
-        line-height: 1.3;
-        margin-bottom: 6px;
-      }
-      .rc-badge-box {
-        display: flex;
-        justify-content: center;
-        margin: 4px 0 8px;
-      }
-      .rc-badge {
-        border: 1px dashed #000;
-        padding: 2px 16px;
-        font-size: 11px;
-        letter-spacing: 2px;
-      }
-      .rc-call-section {
-        border-top: 1px solid #000;
-        border-bottom: 1px solid #000;
-        padding: 6px 0;
-        text-align: center;
-        margin-bottom: 6px;
-      }
-      .rc-call-title {
-        font-size: 16px;
-        font-weight: bold;
-        letter-spacing: 1px;
-      }
-      .rc-call-number {
-        font-size: 34px;
-        font-weight: 900;
-        line-height: 1.1;
-        letter-spacing: 2px;
-      }
-      .rc-shop-contact {
-        font-size: 10px;
-        line-height: 1.3;
-        margin-bottom: 8px;
-      }
-      .rc-table-head {
-        font-size: 10px;
-        border-bottom: 1px dashed #000;
-        padding-bottom: 3px;
-        margin-bottom: 4px;
-      }
-      .rc-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 11px;
-      }
-      .rc-table td {
-        padding: 2px 0;
-        vertical-align: top;
-      }
+      .rc-header-meta { font-size: 9px; line-height: 1.3; margin-bottom: 6px; }
+      .rc-badge-box { display: flex; justify-content: center; margin: 4px 0 8px; }
+      .rc-badge { border: 1px dashed #000; padding: 2px 16px; font-size: 11px; letter-spacing: 2px; }
+      .rc-call-section { border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 6px 0; text-align: center; margin-bottom: 6px; }
+      .rc-call-title { font-size: 16px; font-weight: bold; letter-spacing: 1px; }
+      .rc-call-number { font-size: 34px; font-weight: 900; line-height: 1.1; letter-spacing: 2px; }
+      .rc-shop-contact { font-size: 10px; line-height: 1.3; margin-bottom: 8px; }
+      .rc-table-head { font-size: 10px; border-bottom: 1px dashed #000; padding-bottom: 3px; margin-bottom: 4px; }
+      .rc-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+      .rc-table td { padding: 2px 0; vertical-align: top; }
       .rc-col-name { width: 55%; }
       .rc-col-qty { width: 15%; text-align: center; }
       .rc-col-price { width: 30%; text-align: right; }
-      .rc-option-line {
-        font-size: 9px;
-        padding-left: 8px;
-        color: #333;
-      }
-      .rc-dashed-line {
-        border-top: 1px dashed #000;
-        margin: 6px 0;
-      }
-      .rc-calc-row {
-        display: flex;
-        justify-content: space-between;
-        font-size: 11px;
-        line-height: 1.5;
-      }
-      .rc-total-row {
-        font-size: 14px;
-        font-weight: bold;
-        margin: 3px 0;
-      }
-      .rc-tax-line {
-        font-size: 9px;
-        text-align: right;
-        margin-bottom: 4px;
-      }
-      .rc-footer-msg {
-        text-align: center;
-        font-size: 9px;
-        margin-top: 12px;
-        padding-bottom: 10mm; /* プリンターのカット余白 */
-      }
+      .rc-option-line { font-size: 9px; padding-left: 8px; color: #333; }
+      .rc-dashed-line { border-top: 1px dashed #000; margin: 6px 0; }
+      .rc-calc-row { display: flex; justify-content: space-between; font-size: 11px; line-height: 1.5; }
+      .rc-total-row { font-size: 14px; font-weight: bold; margin: 3px 0; }
+      .rc-tax-line { font-size: 9px; text-align: right; margin-bottom: 4px; }
+      
+      /* バーコード印刷エリア */
+      .rc-barcode-area { text-align: center; margin-top: 8px; padding-top: 6px; border-top: 1px dashed #000; }
+      .rc-barcode-svg { max-width: 100%; height: 45px; }
+      .rc-footer-msg { text-align: center; font-size: 9px; margin-top: 6px; padding-bottom: 12mm; }
     }
   </style>
 </head>
 <body>
 
   <div class="container">
+    <!-- 左パネル：メニュー一覧 -->
     <div class="panel">
       <h2>
         <span>🍜 メニュー注文</span>
@@ -237,6 +170,7 @@
       </div>
     </div>
 
+    <!-- 右パネル：伝票・クーポン・返金・会計 -->
     <div class="panel">
       <h2>
         <span>伝票</span>
@@ -247,15 +181,31 @@
         <div style="padding: 40px; text-align: center; color: #64748b;">商品を選択してください</div>
       </div>
 
+      <!-- クーポン適用結果バー -->
+      <div class="coupon-applied-box" id="couponAppliedBox">
+        <div>
+          <strong style="color:var(--accent);" id="couponAppliedName">LINE 100円引き</strong>
+          <span style="color:#f87171; font-weight:bold; margin-left:6px;" id="couponDiscountText">-¥100</span>
+        </div>
+        <span class="coupon-cancel" onclick="removeCoupon()">取消</span>
+      </div>
+
+      <!-- 操作サブボタン（クーポン読取 / 返金） -->
+      <div class="action-sub-grid">
+        <button class="sub-btn" onclick="openCouponModal()">🎟️ クーポン適用 (Scan)</button>
+        <button class="sub-btn" style="border-color:#ef4444; color:#fca5a5;" onclick="openRefundModal()">↩️ 返金・取消 (Scan)</button>
+      </div>
+
       <div class="total-bar">
-        <span style="font-size:16px;">合計金額</span>
-        <span style="font-size:28px; font-weight:900; color:#f59e0b;" id="cartTotalDisplay">¥0</span>
+        <span style="font-size:15px;">ご請求額</span>
+        <span style="font-size:26px; font-weight:900; color:#f59e0b;" id="cartTotalDisplay">¥0</span>
       </div>
 
       <button id="openCheckoutModalBtn" class="open-pay-btn" disabled>お会計に進む</button>
     </div>
   </div>
 
+  <!-- オプション選択モーダル -->
   <div class="modal-overlay" id="modalOverlay">
     <div class="modal">
       <h3 id="modalItemName" style="color:#f59e0b;">お好み・コール選択</h3>
@@ -267,6 +217,43 @@
     </div>
   </div>
 
+  <!-- クーポン読み取りモーダル -->
+  <div class="modal-overlay" id="couponModal">
+    <div class="modal">
+      <h3 style="color:var(--accent); margin-bottom:8px;">🎟️ クーポン適用</h3>
+      <p style="font-size:13px; color:#94a3b8; margin-bottom:14px;">スキャナーでクーポンコードを読み取るか、コードを入力してください。</p>
+      <input type="text" id="couponScanInput" placeholder="バーコードをピッ！または入力" style="width:100%; background:#0b1120; border:2px solid var(--accent); color:white; padding:12px; border-radius:8px; font-size:18px; font-family:monospace; text-transform:uppercase; margin-bottom:16px;">
+      <div style="display:flex; gap:10px;">
+        <button onclick="applyCouponCode()" style="flex:1; background:var(--accent); color:black; border:none; padding:12px; border-radius:6px; font-weight:bold; cursor:pointer;">適用する</button>
+        <button onclick="closeCouponModal()" style="background:#475569; color:white; border:none; padding:12px 18px; border-radius:6px; cursor:pointer;">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 返金・取消モーダル -->
+  <div class="modal-overlay" id="refundModal">
+    <div class="modal">
+      <h3 style="color:#ef4444; margin-bottom:8px;">↩️ 注文の返金・取消</h3>
+      <p style="font-size:13px; color:#94a3b8; margin-bottom:14px;">お客様のレシート下のバーコードをスキャナーで読み取るか、レシートCODEを入力してください。</p>
+      <input type="text" id="refundScanInput" placeholder="バーコードをピッ！または入力" style="width:100%; background:#0b1120; border:2px solid #ef4444; color:white; padding:12px; border-radius:8px; font-size:18px; font-family:monospace; text-transform:uppercase; margin-bottom:14px;">
+      
+      <!-- 検索結果表示枠 -->
+      <div id="refundTargetArea" style="display:none; background:#0b1120; border:1px solid #334155; border-radius:6px; padding:12px; margin-bottom:14px; font-size:14px;">
+        <div style="color:#f59e0b; font-weight:bold;" id="rfOrderNum">注文 #101</div>
+        <div style="font-size:12px; color:#94a3b8;" id="rfDateTime">2026/09/09 18:30</div>
+        <div style="margin:6px 0; font-size:13px;" id="rfItems">塩ラーメン x 1</div>
+        <div style="font-size:16px; font-weight:bold;" id="rfTotal">返金額: ¥1,200 (現金)</div>
+      </div>
+
+      <div style="display:flex; gap:10px;">
+        <button id="btnSearchRefund" onclick="searchRefundOrder()" style="flex:1; background:#38bdf8; color:black; border:none; padding:12px; border-radius:6px; font-weight:bold; cursor:pointer;">注文を照合</button>
+        <button id="btnConfirmRefund" onclick="executeRefund()" style="display:none; flex:1; background:#dc2626; color:white; border:none; padding:12px; border-radius:6px; font-weight:bold; cursor:pointer;">返金を確定する</button>
+        <button onclick="closeRefundModal()" style="background:#475569; color:white; border:none; padding:12px 18px; border-radius:6px; cursor:pointer;">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 会計モーダル -->
   <div class="checkout-modal" id="checkoutModal">
     <div class="checkout-header">
       <h2 style="border:none; font-size:22px; margin:0;">💰 お会計手続き</h2>
@@ -332,12 +319,12 @@
     </div>
   </div>
 
-  <!-- 写真デザイン完全準拠レシート -->
+  <!-- レシート印刷用コンテナ -->
   <div id="receiptContainer"></div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, doc, updateDoc, query, where, getDocs, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyD0AeO0NWqxcTYKO6aJPNJ8cNWpYGs-xvM",
@@ -368,8 +355,18 @@
     let pendingItem = null;
     let selectedOpts = [];
 
+    // クーポン管理
+    let appliedCoupon = null; // { name, code, discountType, discountValue, discountAmount }
+
     let currentPayMethod = "cash";
     let enteredCashStr = "0";
+
+    // 登録済みクーポンのキャッシュ
+    let availableCoupons = [];
+    onSnapshot(collection(db, "coupons"), (snapshot) => {
+      availableCoupons = [];
+      snapshot.forEach(docSnap => availableCoupons.push({ id: docSnap.id, ...docSnap.data() }));
+    });
 
     window.filterCat = (cat) => {
       currentCat = cat;
@@ -438,21 +435,36 @@
       renderCart();
     }
 
+    // 金額計算
+    function getTotals() {
+      const subtotal = cart.reduce((sum, i) => sum + i.price, 0);
+      let discount = 0;
+      if (appliedCoupon && subtotal > 0) {
+        if (appliedCoupon.discountType === "fixed") {
+          discount = Math.min(subtotal, appliedCoupon.discountValue);
+        } else if (appliedCoupon.discountType === "percent") {
+          discount = Math.round(subtotal * (appliedCoupon.discountValue / 100));
+        }
+      }
+      const total = Math.max(0, subtotal - discount);
+      return { subtotal, discount, total };
+    }
+
     function renderCart() {
       const list = document.getElementById("cartList");
       const openBtn = document.getElementById("openCheckoutModalBtn");
+      const couponBox = document.getElementById("couponAppliedBox");
 
       if (cart.length === 0) {
         list.innerHTML = '<div style="padding: 40px; text-align: center; color: #64748b;">商品を選択してください</div>';
+        couponBox.style.display = "none";
         document.getElementById("cartTotalDisplay").innerText = "¥0";
         openBtn.disabled = true;
         return;
       }
 
       list.innerHTML = "";
-      let total = 0;
       cart.forEach((item, index) => {
-        total += item.price;
         const row = document.createElement("div");
         row.className = "order-row";
         const optHtml = item.options.length > 0 ? `<br><small style="color:#f59e0b;">└ ${item.options.join(", ")}</small>` : "";
@@ -466,6 +478,17 @@
         list.appendChild(row);
       });
 
+      const { discount, total } = getTotals();
+
+      // クーポン表示反映
+      if (appliedCoupon && discount > 0) {
+        couponBox.style.display = "flex";
+        document.getElementById("couponAppliedName").innerText = appliedCoupon.name;
+        document.getElementById("couponDiscountText").innerText = `-¥${discount.toLocaleString()}`;
+      } else {
+        couponBox.style.display = "none";
+      }
+
       document.getElementById("cartTotalDisplay").innerText = `¥${total.toLocaleString()}`;
       openBtn.disabled = false;
     }
@@ -475,8 +498,146 @@
       renderCart();
     };
 
+    // =========================================================
+    // クーポン適用 (Scan & 入力)
+    // =========================================================
+    window.openCouponModal = () => {
+      if (cart.length === 0) {
+        alert("先に商品を注文に追加してください。");
+        return;
+      }
+      const input = document.getElementById("couponScanInput");
+      input.value = "";
+      document.getElementById("couponModal").style.display = "flex";
+      setTimeout(() => input.focus(), 50);
+    };
+
+    window.closeCouponModal = () => {
+      document.getElementById("couponModal").style.display = "none";
+    };
+
+    // スキャナーのEnterキー押下検知
+    document.getElementById("couponScanInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        applyCouponCode();
+      }
+    });
+
+    window.applyCouponCode = () => {
+      const code = document.getElementById("couponScanInput").value.trim().toUpperCase();
+      if (!code) return;
+
+      const found = availableCoupons.find(c => c.code.toUpperCase() === code);
+      if (!found) {
+        alert(`クーポンコード「${code}」は見つかりませんでした。`);
+        return;
+      }
+
+      appliedCoupon = found;
+      closeCouponModal();
+      renderCart();
+      alert(`クーポン「${found.name}」を適用しました！`);
+    };
+
+    window.removeCoupon = () => {
+      appliedCoupon = null;
+      renderCart();
+    };
+
+    // =========================================================
+    // 返金・取消 (Scan & 照合)
+    // =========================================================
+    let targetRefundDoc = null;
+
+    window.openRefundModal = () => {
+      const input = document.getElementById("refundScanInput");
+      input.value = "";
+      targetRefundDoc = null;
+      document.getElementById("refundTargetArea").style.display = "none";
+      document.getElementById("btnSearchRefund").style.display = "block";
+      document.getElementById("btnConfirmRefund").style.display = "none";
+      document.getElementById("refundModal").style.display = "flex";
+      setTimeout(() => input.focus(), 50);
+    };
+
+    window.closeRefundModal = () => {
+      document.getElementById("refundModal").style.display = "none";
+      targetRefundDoc = null;
+    };
+
+    document.getElementById("refundScanInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        searchRefundOrder();
+      }
+    });
+
+    window.searchRefundOrder = async () => {
+      const code = document.getElementById("refundScanInput").value.trim().toUpperCase();
+      if (!code) {
+        alert("レシートCODEまたはバーコードを入力してください");
+        return;
+      }
+
+      try {
+        const q = query(collection(db, "orders"), where("receiptCode", "==", code));
+        const snap = await getDocs(q);
+
+        if (snap.empty) {
+          alert(`レシートCODE「${code}」に一致する注文データが見つかりませんでした。`);
+          return;
+        }
+
+        const docSnap = snap.docs[0];
+        const order = docSnap.data();
+
+        if (order.status === "refunded") {
+          alert(`【注意】この注文はすでに返金・取消済みです。\n（取消日時: ${order.refundedAt ? order.refundedAt.toDate().toLocaleString() : ""}）`);
+          return;
+        }
+
+        targetRefundDoc = { id: docSnap.id, ...order };
+
+        // 画面に注文詳細を表示
+        const d = order.createdAt.toDate ? order.createdAt.toDate() : new Date();
+        document.getElementById("rfOrderNum").innerText = `注文 #${order.orderNumber} (レシートCODE: ${order.receiptCode})`;
+        document.getElementById("rfDateTime").innerText = d.toLocaleString();
+        document.getElementById("rfItems").innerText = order.items.map(i => i.name).join(" / ");
+        document.getElementById("rfTotal").innerText = `返金対象額: ¥${order.totalPrice.toLocaleString()} (${order.paymentMethod}決済)`;
+
+        document.getElementById("refundTargetArea").style.display = "block";
+        document.getElementById("btnSearchRefund").style.display = "none";
+        document.getElementById("btnConfirmRefund").style.display = "block";
+      } catch (err) {
+        console.error(err);
+        alert("注文の照合に失敗しました。");
+      }
+    };
+
+    window.executeRefund = async () => {
+      if (!targetRefundDoc) return;
+      if (!confirm(`注文 #${targetRefundDoc.orderNumber}（¥${targetRefundDoc.totalPrice.toLocaleString()}）の返金を確定しますか？\n※売上データからマイナス相殺されます。`)) return;
+
+      try {
+        await updateDoc(doc(db, "orders", targetRefundDoc.id), {
+          status: "refunded",
+          refundedAt: serverTimestamp()
+        });
+
+        alert(`注文 #${targetRefundDoc.orderNumber} の返金・取消を完了しました。\nお客様へ現金 ¥${targetRefundDoc.totalPrice.toLocaleString()} を返金してください。`);
+        closeRefundModal();
+      } catch (err) {
+        console.error(err);
+        alert("返金処理に失敗しました。");
+      }
+    };
+
+    // =========================================================
+    // 会計手続き
+    // =========================================================
     document.getElementById("openCheckoutModalBtn").onclick = () => {
-      const total = cart.reduce((sum, i) => sum + i.price, 0);
+      const { total } = getTotals();
       document.getElementById("modalTotal").innerText = `¥${total.toLocaleString()}`;
       document.getElementById("paypayAmountText").innerText = `¥${total.toLocaleString()}`;
       enteredCashStr = "0";
@@ -531,7 +692,7 @@
     };
 
     window.quickCash = (type) => {
-      const total = cart.reduce((sum, i) => sum + i.price, 0);
+      const { total } = getTotals();
       if (type === "exact") {
         enteredCashStr = String(total);
       } else {
@@ -542,7 +703,7 @@
     };
 
     function updateCashDisplay() {
-      const total = cart.reduce((sum, i) => sum + i.price, 0);
+      const { total } = getTotals();
       const cash = parseInt(enteredCashStr) || 0;
       const change = cash - total;
 
@@ -561,6 +722,169 @@
       }
     }
 
+    // =========================================================
+    // 写真デザイン準拠 ＆ バーコード付きレシート印字
+    // =========================================================
+    function printReceipt(orderData) {
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+
+      let itemRowsHtml = "";
+      orderData.items.forEach(item => {
+        const optHtml = (item.options && item.options.length > 0) ? `<div class="rc-option-line">＞ ${item.options.join(", ")}</div>` : "";
+        itemRowsHtml += `
+          <tr>
+            <td class="rc-col-name">${item.name}${optHtml}</td>
+            <td class="rc-col-qty">1</td>
+            <td class="rc-col-price">¥${item.price.toLocaleString()}</td>
+          </tr>
+        `;
+      });
+
+      const couponRow = orderData.couponDiscount > 0 ? `
+        <div class="rc-calc-row" style="color:#000;">
+          <span>クーポン割引 [${orderData.couponName}]</span>
+          <span>-¥${orderData.couponDiscount.toLocaleString()}</span>
+        </div>
+      ` : "";
+
+      const taxIncluded = Math.round(orderData.totalPrice * 10 / 110);
+
+      const receiptEl = document.getElementById("receiptContainer");
+      receiptEl.innerHTML = `
+        <div class="rc-header-meta">
+          自家製麺 ラーメン亭<br>
+          ${dateStr} レシートCODE[${orderData.receiptCode}]
+        </div>
+
+        <div class="rc-badge-box">
+          <div class="rc-badge">領 収 書</div>
+        </div>
+
+        <div class="rc-call-section">
+          <div class="rc-call-title">お渡し番号</div>
+          <div class="rc-call-number">${orderData.orderNumber}</div>
+        </div>
+
+        <div class="rc-shop-contact">
+          店舗へのお問い合わせ<br>
+          店舗：03-1234-5678
+        </div>
+
+        <div class="rc-table-head">
+          <table style="width:100%;">
+            <tr>
+              <td class="rc-col-name">[Eat-In]<br>メニュー</td>
+              <td class="rc-col-qty" style="vertical-align:bottom;">数量</td>
+              <td class="rc-col-price" style="vertical-align:bottom;">金額</td>
+            </tr>
+          </table>
+        </div>
+
+        <table class="rc-table">
+          ${itemRowsHtml}
+        </table>
+
+        <div class="rc-dashed-line"></div>
+
+        ${couponRow}
+
+        <div class="rc-calc-row rc-total-row">
+          <span>支払金額</span>
+          <span>¥${orderData.totalPrice.toLocaleString()}</span>
+        </div>
+        <div class="rc-tax-line">[税率]10% (内消費税等 ¥${taxIncluded.toLocaleString()})</div>
+
+        <div class="rc-calc-row">
+          <span>${orderData.paymentMethod}決済</span>
+          <span>¥${orderData.totalPrice.toLocaleString()}</span>
+        </div>
+
+        ${orderData.paymentMethod === "現金" ? `
+          <div class="rc-calc-row">
+            <span>お預かり</span>
+            <span>¥${orderData.cashReceived.toLocaleString()}</span>
+          </div>
+          <div class="rc-calc-row">
+            <span>お釣り</span>
+            <span>¥${orderData.change.toLocaleString()}</span>
+          </div>
+        ` : ''}
+
+        <!-- レシートバーコード表示エリア -->
+        <div class="rc-barcode-area">
+          <svg id="receiptBarcodeSvg" class="rc-barcode-svg"></svg>
+          <div style="font-size:10px; font-family:monospace; letter-spacing:1px; margin-top:2px;">${orderData.receiptCode}</div>
+        </div>
+
+        <div class="rc-footer-msg">
+          返金・お問い合わせの際はこのレシートをご提示ください。<br>
+          毎度ご来店ありがとうございます。
+        </div>
+      `;
+
+      // JsBarcodeでバーコード（CODE128）を動的描画
+      JsBarcode("#receiptBarcodeSvg", orderData.receiptCode, {
+        format: "CODE128",
+        width: 1.8,
+        height: 38,
+        displayValue: false,
+        margin: 0
+      });
+
+      setTimeout(() => {
+        window.print();
+      }, 50);
+    }
+
+    // 会計確定 & 注文送信
+    window.submitOrder = async (payMethod) => {
+      const { subtotal, discount, total } = getTotals();
+      const cash = parseInt(enteredCashStr) || 0;
+      const orderNum = parseInt(document.getElementById("orderNum").value);
+
+      // レシートCODEの生成（例: R260909-101-A3F8）
+      const now = new Date();
+      const datePart = `${String(now.getFullYear()).slice(-2)}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+      const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase();
+      const receiptCode = `R${datePart}-${orderNum}-${randomPart}`;
+
+      const orderData = {
+        orderNumber: orderNum,
+        receiptCode: receiptCode,
+        items: [...cart],
+        subtotalPrice: subtotal,
+        couponName: appliedCoupon ? appliedCoupon.name : null,
+        couponCode: appliedCoupon ? appliedCoupon.code : null,
+        couponDiscount: discount,
+        totalPrice: total,
+        paymentMethod: payMethod,
+        cashReceived: payMethod === "現金" ? cash : total,
+        change: payMethod === "現金" ? Math.max(0, cash - total) : 0,
+        status: "cooking",
+        createdAt: serverTimestamp()
+      };
+
+      try {
+        await addDoc(collection(db, "orders"), orderData);
+
+        closeCheckoutModal();
+
+        // バーコード付レシートを印刷
+        printReceipt(orderData);
+
+        // リセット
+        cart = [];
+        appliedCoupon = null;
+        document.getElementById("orderNum").value = orderNum + 1;
+        renderCart();
+      } catch (err) {
+        console.error(err);
+        alert("送信に失敗しました");
+      }
+    };
+
+    // Excel読み込み処理
     document.getElementById("excelInput").addEventListener("change", (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -624,142 +948,6 @@
         menuItems = defaultMenu;
         localStorage.setItem("pos_ramen_menu", JSON.stringify(menuItems));
         renderMenu();
-      }
-    };
-
-    // =========================================================
-    // 写真デザイン完全再現：レシートHTML生成 & 印字
-    // =========================================================
-    function printReceipt(orderData) {
-      const now = new Date();
-      const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-      const receiptNo = `POS01-${String(orderData.orderNumber).padStart(6, '0')}`;
-
-      // 数量集計
-      let itemRowsHtml = "";
-      orderData.items.forEach(item => {
-        const optHtml = (item.options && item.options.length > 0) 
-          ? `<div class="rc-option-line">＞ ${item.options.join(", ")}</div>` 
-          : "";
-        
-        itemRowsHtml += `
-          <tr>
-            <td class="rc-col-name">${item.name}${optHtml}</td>
-            <td class="rc-col-qty">1</td>
-            <td class="rc-col-price">¥${item.price.toLocaleString()}</td>
-          </tr>
-        `;
-      });
-
-      // 内税10%の計算
-      const taxIncluded = Math.round(orderData.totalPrice * 10 / 110);
-
-      const receiptEl = document.getElementById("receiptContainer");
-      receiptEl.innerHTML = `
-        <div class="rc-header-meta">
-          自家製麺 ラーメン亭<br>
-          ${dateStr} レシート番号[${receiptNo}]
-        </div>
-
-        <div class="rc-badge-box">
-          <div class="rc-badge">領 収 書</div>
-        </div>
-
-        <div class="rc-call-section">
-          <div class="rc-call-title">お渡し番号</div>
-          <div class="rc-call-number">${orderData.orderNumber}</div>
-        </div>
-
-        <div class="rc-shop-contact">
-          店舗へのお問い合わせ<br>
-          店舗：03-1234-5678
-        </div>
-
-        <div class="rc-table-head">
-          <table style="width:100%;">
-            <tr>
-              <td class="rc-col-name">[Eat-In]<br>メニュー</td>
-              <td class="rc-col-qty" style="vertical-align:bottom;">数量</td>
-              <td class="rc-col-price" style="vertical-align:bottom;">金額</td>
-            </tr>
-          </table>
-        </div>
-
-        <table class="rc-table">
-          ${itemRowsHtml}
-        </table>
-
-        <div class="rc-dashed-line"></div>
-
-        <div class="rc-calc-row rc-total-row">
-          <span>支払金額</span>
-          <span>¥${orderData.totalPrice.toLocaleString()}</span>
-        </div>
-        <div class="rc-tax-line">[税率]10% (内消費税等 ¥${taxIncluded.toLocaleString()})</div>
-
-        <div class="rc-calc-row">
-          <span>${orderData.paymentMethod}決済</span>
-          <span>¥${orderData.totalPrice.toLocaleString()}</span>
-        </div>
-
-        ${orderData.paymentMethod === "現金" ? `
-          <div class="rc-calc-row">
-            <span>お預かり</span>
-            <span>¥${orderData.cashReceived.toLocaleString()}</span>
-          </div>
-          <div class="rc-calc-row">
-            <span>お釣り</span>
-            <span>¥${orderData.change.toLocaleString()}</span>
-          </div>
-        ` : ''}
-
-        <div class="rc-dashed-line"></div>
-
-        <div class="rc-footer-msg">
-          お渡し番号をお呼びするまで席でお待ちください。<br>
-          ご来店ありがとうございます。
-        </div>
-      `;
-
-      // 印刷実行
-      setTimeout(() => {
-        window.print();
-      }, 50);
-    }
-
-    // 会計確定処理
-    window.submitOrder = async (payMethod) => {
-      const total = cart.reduce((sum, i) => sum + i.price, 0);
-      const cash = parseInt(enteredCashStr) || 0;
-      const orderNum = parseInt(document.getElementById("orderNum").value);
-      const currentCart = [...cart];
-
-      const orderData = {
-        orderNumber: orderNum,
-        items: currentCart,
-        totalPrice: total,
-        paymentMethod: payMethod,
-        cashReceived: payMethod === "現金" ? cash : total,
-        change: payMethod === "現金" ? Math.max(0, cash - total) : 0,
-        status: "cooking",
-        createdAt: serverTimestamp()
-      };
-
-      try {
-        await addDoc(collection(db, "orders"), orderData);
-
-        closeCheckoutModal();
-
-        // 写真レイアウトのレシートを即時自動印刷
-        printReceipt(orderData);
-
-        // カートクリアと次回注文番号の繰り上げ
-        cart = [];
-        document.getElementById("orderNum").value = orderNum + 1;
-        renderCart();
-      } catch (err) {
-        console.error(err);
-        alert("送信に失敗しました");
       }
     };
 
