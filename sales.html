@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>売上管理・営業締め</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --accent: #f59e0b;
+      --green: #22c55e;
+      --red: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 16px; }
+    .container { max-width: 900px; margin: 0 auto; }
+
+    header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--border); padding-bottom: 14px; margin-bottom: 20px; }
+    h1 { font-size: 22px; font-weight: 900; color: var(--accent); }
+    .nav-links a { color: #94a3b8; text-decoration: none; font-size: 14px; margin-left: 12px; }
+    .nav-links a:hover { color: white; }
+
+    /* 設定・日付バー */
+    .control-bar {
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px;
+      display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 20px;
+    }
+    .control-item { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+    input[type="date"], input[type="number"] {
+      background: #0b1120; border: 1px solid var(--border); color: white; padding: 6px 10px; border-radius: 6px; font-size: 15px;
+    }
+
+    /* KPIカード */
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 24px; }
+    .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+    .kpi-title { font-size: 13px; color: #94a3b8; margin-bottom: 6px; }
+    .kpi-value { font-size: 26px; font-weight: 900; }
+
+    /* 内訳セクション */
+    .section-box { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 20px; }
+    .section-title { font-size: 16px; font-weight: bold; border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 14px; }
+
+    .data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .data-table th, .data-table td { padding: 10px 8px; text-align: left; border-bottom: 1px solid #27354f; }
+    .data-table th { color: #94a3b8; font-weight: 600; }
+    .data-table tr:last-child td { border-bottom: none; }
+    .num-col { text-align: right; font-weight: 700; }
+
+    /* 営業終了ボタン */
+    .close-btn {
+      width: 100%; background: #dc2626; color: white; border: none; padding: 18px; border-radius: 10px;
+      font-size: 20px; font-weight: 900; cursor: pointer; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
+      transition: background 0.15s;
+    }
+    .close-btn:active { background: #b91c1c; }
+
+    /* =========================================================
+       日計精算レシート用印刷レイアウト
+       ========================================================= */
+    #closeReceiptContainer { display: none; }
+
+    @media print {
+      @page {
+        margin: 0;
+        size: 80mm auto;
+      }
+      body { background: #fff !important; color: #000 !important; }
+      body * { visibility: hidden; }
+      #closeReceiptContainer, #closeReceiptContainer * { visibility: visible; }
+      #closeReceiptContainer {
+        display: block !important;
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 72mm;
+        margin: 0 auto;
+        padding: 6mm 2mm;
+        color: #000;
+        background: #fff;
+        font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", monospace;
+      }
+      .rc-close-title { text-align: center; font-size: 16px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin-bottom: 6px; }
+      .rc-close-meta { font-size: 9px; margin-bottom: 8px; line-height: 1.4; }
+      .rc-close-row { display: flex; justify-content: space-between; font-size: 11px; line-height: 1.6; }
+      .rc-close-bold { font-size: 13px; font-weight: 900; }
+      .rc-close-dash { border-top: 1px dashed #000; margin: 6px 0; }
+      .rc-close-sub { font-size: 11px; font-weight: bold; margin: 6px 0 2px; }
+      .rc-close-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+      .rc-close-table td { padding: 2px 0; }
+      .rc-close-footer { text-align: center; font-size: 9px; margin-top: 14px; padding-bottom: 12mm; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <h1>📊 売上・レジ点検・日計精算</h1>
+      <div class="nav-links">
+        <a href="index.html">ポータル</a>
+        <a href="regi.html">レジ</a>
+        <a href="kitchen.html">厨房</a>
+      </div>
+    </header>
+
+    <!-- コントロールバー（日付選択・レジ釣銭準備金） -->
+    <div class="control-bar">
+      <div class="control-item">
+        <label>集計対象日:</label>
+        <input type="date" id="targetDateInput">
+      </div>
+      <div class="control-item">
+        <label>釣銭準備金（初期レジ金）: ¥</label>
+        <input type="number" id="baseCashInput" value="30000" style="width: 110px;">
+      </div>
+    </div>
+
+    <!-- 重要数値 KPI -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-title">総売上高</div>
+        <div class="kpi-value" style="color: var(--accent);" id="kpiTotalSales">¥0</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-title">組数 / 客数</div>
+        <div class="kpi-value" id="kpiOrderCount">0 件</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-title">客単価</div>
+        <div class="kpi-value" id="kpiAvgSales">¥0</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-title">レジ在高（理論値）</div>
+        <div class="kpi-value" style="color: var(--green);" id="kpiDrawerCash">¥0</div>
+      </div>
+    </div>
+
+    <!-- 決済別内訳 -->
+    <div class="section-box">
+      <div class="section-title">決済別売上 & レジ金計算</div>
+      <table class="data-table">
+        <tr>
+          <td>現金売上</td>
+          <td class="num-col" id="cashSales">¥0</td>
+        </tr>
+        <tr>
+          <td>PayPay売上</td>
+          <td class="num-col" id="paypaySales">¥0</td>
+        </tr>
+        <tr>
+          <td>釣銭準備金（朝のレジ内現金）</td>
+          <td class="num-col" id="displayBaseCash">¥0</td>
+        </tr>
+        <tr style="background: rgba(34, 197, 94, 0.1);">
+          <td><strong>今あるべきレジ内現金（在高理論値）</strong></td>
+          <td class="num-col" style="color: var(--green); font-size: 16px;" id="expectedDrawerCash">¥0</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- 出数（商品別ランキング） -->
+    <div class="section-box">
+      <div class="section-title">商品別 出数内訳</div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>商品名</th>
+            <th style="text-align:center;">出数</th>
+            <th class="num-col">小計金額</th>
+          </tr>
+        </thead>
+        <tbody id="itemsTableBody">
+          <tr><td colspan="3" style="text-align:center; color:#64748b;">データがありません</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 営業終了ボタン -->
+    <button class="close-btn" onclick="executeDailyClose()">🛑 営業終了（日計レシートを印字）</button>
+  </div>
+
+  <!-- 日計精算レシート用印刷コンテナ -->
+  <div id="closeReceiptContainer"></div>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore, collection, query, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyD0AeO0NWqxcTYKO6aJPNJ8cNWpYGs-xvM",
+      authDomain: "my-order-app-a065c.firebaseapp.com",
+      projectId: "my-order-app-a065c",
+      storageBucket: "my-order-app-a065c.firebasestorage.app",
+      messagingSenderId: "874138476052",
+      appId: "1:874138476052:web:1341a638fdd9e77fb51101"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const dateInput = document.getElementById("targetDateInput");
+    const baseCashInput = document.getElementById("baseCashInput");
+
+    // 初期値を当日にセット
+    const today = new Date();
+    dateInput.value = today.toISOString().split("T")[0];
+
+    // レジ釣銭準備金の保存・復帰
+    const savedBase = localStorage.getItem("pos_base_cash");
+    if (savedBase) baseCashInput.value = savedBase;
+    baseCashInput.onchange = () => {
+      localStorage.setItem("pos_base_cash", baseCashInput.value);
+      calculateSales();
+    };
+
+    dateInput.onchange = () => calculateSales();
+
+    let allOrders = [];
+
+    // ordersコレクションをリアルタイム監視
+    onSnapshot(collection(db, "orders"), (snapshot) => {
+      allOrders = [];
+      snapshot.forEach(docSnap => {
+        allOrders.push(docSnap.data());
+      });
+      calculateSales();
+    });
+
+    let currentSummary = null;
+
+    function calculateSales() {
+      const selectedDate = dateInput.value;
+      const baseCash = parseInt(baseCashInput.value, 10) || 0;
+
+      // 選択日の00:00:00〜23:59:59でフィルタ
+      const targetOrders = allOrders.filter(order => {
+        if (!order.createdAt) return false;
+        const d = order.createdAt.toDate ? order.createdAt.toDate() : new Date(order.createdAt);
+        const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return ymd === selectedDate;
+      });
+
+      let totalSales = 0;
+      let cashTotal = 0;
+      let paypayTotal = 0;
+      const itemCounts = {};
+
+      targetOrders.forEach(order => {
+        const p = order.totalPrice || 0;
+        totalSales += p;
+
+        if (order.paymentMethod === "現金") {
+          cashTotal += p;
+        } else if (order.paymentMethod === "PayPay") {
+          paypayTotal += p;
+        }
+
+        // 商品集計
+        (order.items || []).forEach(item => {
+          if (!itemCounts[item.name]) {
+            itemCounts[item.name] = { count: 0, subtotal: 0 };
+          }
+          itemCounts[item.name].count += 1;
+          itemCounts[item.name].subtotal += item.price;
+        });
+      });
+
+      const orderCount = targetOrders.length;
+      const avgSales = orderCount > 0 ? Math.round(totalSales / orderCount) : 0;
+      const drawerCash = baseCash + cashTotal;
+
+      currentSummary = {
+        date: selectedDate,
+        totalSales,
+        orderCount,
+        avgSales,
+        cashTotal,
+        paypayTotal,
+        baseCash,
+        drawerCash,
+        itemCounts
+      };
+
+      // 画面反映
+      document.getElementById("kpiTotalSales").innerText = `¥${totalSales.toLocaleString()}`;
+      document.getElementById("kpiOrderCount").innerText = `${orderCount} 件`;
+      document.getElementById("kpiAvgSales").innerText = `¥${avgSales.toLocaleString()}`;
+      document.getElementById("kpiDrawerCash").innerText = `¥${drawerCash.toLocaleString()}`;
+
+      document.getElementById("cashSales").innerText = `¥${cashTotal.toLocaleString()}`;
+      document.getElementById("paypaySales").innerText = `¥${paypayTotal.toLocaleString()}`;
+      document.getElementById("displayBaseCash").innerText = `¥${baseCash.toLocaleString()}`;
+      document.getElementById("expectedDrawerCash").innerText = `¥${drawerCash.toLocaleString()}`;
+
+      // テーブル作成
+      const tbody = document.getElementById("itemsTableBody");
+      tbody.innerHTML = "";
+      const sortedNames = Object.keys(itemCounts).sort((a, b) => itemCounts[b].count - itemCounts[a].count);
+
+      if (sortedNames.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#64748b;">該当日の注文データはありません</td></tr>';
+        return;
+      }
+
+      sortedNames.forEach(name => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${name}</td>
+          <td style="text-align:center;">${itemCounts[name].count}</td>
+          <td class="num-col">¥${itemCounts[name].subtotal.toLocaleString()}</td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    // =========================================================
+    // 営業終了（日計レシート印刷）
+    // =========================================================
+    window.executeDailyClose = () => {
+      if (!currentSummary) return;
+
+      const conf = confirm(
+        `本日（${currentSummary.date}）の営業を締め、日計精算レシートを印刷しますか？\n\n` +
+        `【総売上】: ¥${currentSummary.totalSales.toLocaleString()}\n` +
+        `【レジ内現金目標】: ¥${currentSummary.drawerCash.toLocaleString()}`
+      );
+      if (!conf) return;
+
+      const now = new Date();
+      const printTime = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      // 商品一覧
+      let itemRows = "";
+      const sortedNames = Object.keys(currentSummary.itemCounts).sort((a, b) => currentSummary.itemCounts[b].count - currentSummary.itemCounts[a].count);
+      sortedNames.forEach(name => {
+        const data = currentSummary.itemCounts[name];
+        itemRows += `
+          <tr>
+            <td style="width:50%;">${name}</td>
+            <td style="width:20%; text-align:center;">${data.count}</td>
+            <td style="width:30%; text-align:right;">¥${data.subtotal.toLocaleString()}</td>
+          </tr>
+        `;
+      });
+
+      const receiptEl = document.getElementById("closeReceiptContainer");
+      receiptEl.innerHTML = `
+        <div class="rc-close-title">日計精算報告書（営業終了）</div>
+        <div class="rc-close-meta">
+          店舗：自家製麺 ラーメン亭<br>
+          対象日：${currentSummary.date}<br>
+          出力日時：${printTime}
+        </div>
+
+        <div class="rc-close-dash"></div>
+
+        <div class="rc-close-row rc-close-bold">
+          <span>総売上高</span>
+          <span>¥${currentSummary.totalSales.toLocaleString()}</span>
+        </div>
+        <div class="rc-close-row">
+          <span>総客数 / 伝票数</span>
+          <span>${currentSummary.orderCount} 伝票</span>
+        </div>
+        <div class="rc-close-row">
+          <span>客単価</span>
+          <span>¥${currentSummary.avgSales.toLocaleString()}</span>
+        </div>
+
+        <div class="rc-close-dash"></div>
+        <div class="rc-close-sub">【決済内訳】</div>
+
+        <div class="rc-close-row">
+          <span>現金売上</span>
+          <span>¥${currentSummary.cashTotal.toLocaleString()}</span>
+        </div>
+        <div class="rc-close-row">
+          <span>PayPay売上</span>
+          <span>¥${currentSummary.paypayTotal.toLocaleString()}</span>
+        </div>
+
+        <div class="rc-close-dash"></div>
+        <div class="rc-close-sub">【レジ内現金点検（在高）】</div>
+
+        <div class="rc-close-row">
+          <span>釣銭準備金（朝の現金）</span>
+          <span>¥${currentSummary.baseCash.toLocaleString()}</span>
+        </div>
+        <div class="rc-close-row">
+          <span>＋ 現金売上</span>
+          <span>¥${currentSummary.cashTotal.toLocaleString()}</span>
+        </div>
+        <div class="rc-close-dash"></div>
+        <div class="rc-close-row rc-close-bold" style="font-size:14px;">
+          <span>レジ金在高（理論値）</span>
+          <span>¥${currentSummary.drawerCash.toLocaleString()}</span>
+        </div>
+
+        <div class="rc-close-dash"></div>
+        <div class="rc-close-sub">【商品別販売内訳】</div>
+
+        <table class="rc-close-table">
+          <tr style="border-bottom:1px solid #000;">
+            <td>商品</td>
+            <td style="text-align:center;">数</td>
+            <td style="text-align:right;">金額</td>
+          </tr>
+          ${itemRows}
+        </table>
+
+        <div class="rc-close-dash"></div>
+        <div class="rc-close-footer">
+          本日もお疲れ様でした！<br>
+          ドロア内の現金実数と照合してください。
+        </div>
+      `;
+
+      setTimeout(() => {
+        window.print();
+      }, 50);
+    };
+  </script>
+</body>
+</html>
