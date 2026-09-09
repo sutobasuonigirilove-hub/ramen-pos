@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>クーポン管理マスター</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --accent: #f59e0b;
+      --danger: #ef4444;
+      --success: #22c55e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 20px; }
+    .container { max-width: 900px; margin: 0 auto; }
+
+    header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--border); padding-bottom: 14px; margin-bottom: 24px; }
+    h1 { font-size: 22px; color: var(--accent); }
+    .nav-links a { color: #94a3b8; text-decoration: none; font-size: 14px; margin-left: 14px; }
+    .nav-links a:hover { color: white; }
+
+    .form-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 24px; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 6px; font-weight: bold; }
+    .form-group input, .form-group select {
+      width: 100%; background: #0b1120; border: 1px solid var(--border); color: white; padding: 10px; border-radius: 6px; font-size: 15px;
+    }
+
+    .btn-submit { background: var(--success); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
+    .btn-submit:hover { background: #15803d; }
+
+    .list-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: #94a3b8; font-weight: 600; }
+    .code-badge { background: #0b1120; border: 1px dashed var(--accent); color: var(--accent); padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 15px; font-weight: bold; }
+    .btn-del { background: #7f1d1d; color: #fca5a5; border: 1px solid #991b1b; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .btn-del:hover { background: var(--danger); color: white; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <h1>🎟️ クーポン管理マスター</h1>
+      <div class="nav-links">
+        <a href="index.html">ポータル</a>
+        <a href="regi.html">レジ画面</a>
+        <a href="sales.html">売上管理</a>
+      </div>
+    </header>
+
+    <!-- クーポン新規登録フォーム -->
+    <div class="form-card">
+      <h2 style="font-size: 16px; margin-bottom: 14px;">➕ 新規クーポン登録</h2>
+      <form id="couponForm">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>クーポン名（例: 雨の日割引 / 初回LINE登録）</label>
+            <input type="text" id="couponName" placeholder="LINE友だち追加 100円引き" required>
+          </div>
+          <div class="form-group">
+            <label>クーポンコード（スキャナー読取 / 英数）</label>
+            <input type="text" id="couponCode" placeholder="CP100" style="font-family: monospace; text-transform: uppercase;" required>
+          </div>
+          <div class="form-group">
+            <label>割引タイプ</label>
+            <select id="discountType">
+              <option value="fixed">定額値引き（円）</option>
+              <option value="percent">定率値引き（%）</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>割引額 / 割引率（例: 100 または 10）</label>
+            <input type="number" id="discountValue" placeholder="100" min="1" required>
+          </div>
+        </div>
+        <button type="submit" class="btn-submit">登録する</button>
+      </form>
+    </div>
+
+    <!-- 登録済みクーポン一覧 -->
+    <div class="list-card">
+      <h2 style="font-size: 16px; margin-bottom: 14px;">📋 有効なクーポン一覧</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>クーポン名</th>
+            <th>コード（スキャン用）</th>
+            <th>割引内容</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="couponTableBody">
+          <tr><td colspan="4" style="text-align:center; color:#64748b;">読み込み中...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyD0AeO0NWqxcTYKO6aJPNJ8cNWpYGs-xvM",
+      authDomain: "my-order-app-a065c.firebaseapp.com",
+      projectId: "my-order-app-a065c",
+      storageBucket: "my-order-app-a065c.firebasestorage.app",
+      messagingSenderId: "874138476052",
+      appId: "1:874138476052:web:1341a638fdd9e77fb51101"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const couponCol = collection(db, "coupons");
+
+    // クーポン一覧のリアルタイム監視
+    onSnapshot(couponCol, (snapshot) => {
+      const tbody = document.getElementById("couponTableBody");
+      tbody.innerHTML = "";
+
+      if (snapshot.empty) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#64748b;">登録されたクーポンはありません</td></tr>';
+        return;
+      }
+
+      snapshot.forEach((d) => {
+        const c = d.data();
+        const tr = document.createElement("tr");
+        const discountText = c.discountType === "fixed" ? `¥${c.discountValue.toLocaleString()} 引き` : `${c.discountValue}% OFF`;
+
+        tr.innerHTML = `
+          <td><strong>${c.name}</strong></td>
+          <td><span class="code-badge">${c.code}</span></td>
+          <td style="color:#f59e0b; font-weight:bold;">${discountText}</td>
+          <td><button class="btn-del" onclick="deleteCoupon('${d.id}', '${c.name}')">削除</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    });
+
+    // 新規登録
+    document.getElementById("couponForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const name = document.getElementById("couponName").value.trim();
+      const code = document.getElementById("couponCode").value.trim().toUpperCase();
+      const discountType = document.getElementById("discountType").value;
+      const discountValue = parseInt(document.getElementById("discountValue").value, 10);
+
+      try {
+        await addDoc(couponCol, {
+          name,
+          code,
+          discountType,
+          discountValue,
+          createdAt: serverTimestamp()
+        });
+        alert(`クーポン「${name}」を登録しました！`);
+        document.getElementById("couponForm").reset();
+      } catch (err) {
+        console.error(err);
+        alert("登録に失敗しました");
+      }
+    };
+
+    window.deleteCoupon = async (id, name) => {
+      if (confirm(`クーポン「${name}」を削除しますか？`)) {
+        await deleteDoc(doc(db, "coupons", id));
+      }
+    };
+  </script>
+</body>
+</html>
