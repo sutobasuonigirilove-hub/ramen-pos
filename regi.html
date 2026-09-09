@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>ラーメン屋POSレジ</title>
-  <!-- SheetJS: Excel読込ライブラリ -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     :root {
@@ -37,7 +36,7 @@
       display: flex; flex-direction: column; justify-content: space-between; min-height: 85px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     }
     .menu-item-btn:active { transform: scale(0.96); }
-    .item-name-txt { font-weight: bold; font-size: 14px; color: #0f172a; line-height: 1.2; margin-bottom: 4px; }
+    .item-name-txt { font-weight: bold; font-size: 15px; color: #0f172a; line-height: 1.2; margin-bottom: 4px; }
     .item-price-txt { font-size: 14px; font-weight: 800; color: #1e293b; }
 
     /* 伝票 */
@@ -49,8 +48,8 @@
     .open-pay-btn { width: 100%; background: #ea580c; color: white; border: none; padding: 16px; border-radius: 8px; font-size: 20px; font-weight: bold; cursor: pointer; }
     .open-pay-btn:disabled { background: #475569; }
 
-    .excel-zone { border: 1px dashed var(--border); border-radius: 8px; padding: 8px; text-align: center; margin-top: 12px; background: #131d2e; }
-    .excel-zone label { cursor: pointer; color: #38bdf8; font-size: 13px; font-weight: bold; }
+    .excel-zone { border: 1px dashed var(--border); border-radius: 8px; padding: 10px; text-align: center; margin-top: 12px; background: #131d2e; }
+    .excel-zone label { cursor: pointer; color: #38bdf8; font-size: 13px; font-weight: bold; display: block; }
     .excel-zone input { display: none; }
 
     /* オプション選択モーダル */
@@ -60,10 +59,8 @@
     .opt-btn { background: #334155; color: #f8fafc; border: 1px solid #475569; padding: 10px 14px; border-radius: 20px; cursor: pointer; font-size: 14px; }
     .opt-btn.selected { background: #ea580c; border-color: #f97316; font-weight: bold; }
 
-    /* 会計専用フルスクリーンモーダル (iPad想定) */
-    .checkout-modal {
-      position: fixed; inset: 0; background: #0f172a; z-index: 2000; display: none; flex-direction: column; padding: 20px; max-width: 900px; margin: 0 auto;
-    }
+    /* 会計モーダル */
+    .checkout-modal { position: fixed; inset: 0; background: #0f172a; z-index: 2000; display: none; flex-direction: column; padding: 20px; max-width: 900px; margin: 0 auto; }
     .checkout-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--border); padding-bottom: 12px; margin-bottom: 16px; }
     .pay-method-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
     .pay-tab-btn { padding: 16px; font-size: 18px; font-weight: bold; border-radius: 10px; border: 2px solid var(--border); background: #1e293b; color: white; cursor: pointer; }
@@ -73,12 +70,10 @@
     .pay-content { flex: 1; display: grid; grid-template-columns: 1fr 1.2fr; gap: 20px; }
     @media (max-width: 600px) { .pay-content { grid-template-columns: 1fr; } }
 
-    /* 会計サマリー */
     .pay-summary { background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid var(--border); display: flex; flex-direction: column; justify-content: space-around; }
     .sum-row { display: flex; justify-content: space-between; font-size: 18px; margin-bottom: 10px; }
     .sum-val { font-size: 28px; font-weight: 900; }
 
-    /* iPad用テンキー */
     .keypad-panel { display: flex; flex-direction: column; gap: 8px; }
     .quick-cash-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
     .quick-btn { background: #334155; color: white; border: none; padding: 12px 4px; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; }
@@ -86,7 +81,6 @@
     .num-key { background: #1e293b; border: 1px solid var(--border); color: white; font-size: 24px; font-weight: bold; border-radius: 8px; display: flex; justify-content: center; align-items: center; min-height: 54px; cursor: pointer; }
     .num-key:active { background: #334155; }
 
-    /* 決済完了ボタン */
     .submit-order-btn { width: 100%; border: none; padding: 18px; border-radius: 10px; font-size: 22px; font-weight: 900; cursor: pointer; color: white; margin-top: 12px; }
     .btn-cash { background: var(--success); }
     .btn-cash:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
@@ -96,7 +90,6 @@
 <body>
 
   <div class="container">
-    <!-- 左：メニュー選択 -->
     <div class="panel">
       <h2>
         <span>🍜 メニュー注文</span>
@@ -105,10 +98,10 @@
 
       <div class="cat-tabs" id="catTabs">
         <button class="cat-tab active" onclick="filterCat('すべて')">すべて</button>
-        <button class="cat-tab" onclick="filterCat('LTO')">LTO(限定)</button>
         <button class="cat-tab" onclick="filterCat('ラーメン')">ラーメン</button>
+        <button class="cat-tab" onclick="filterCat('LTO')">LTO</button>
         <button class="cat-tab" onclick="filterCat('トッピング')">トッピング</button>
-        <button class="cat-tab" onclick="filterCat('副菜')">副菜(サイド)</button>
+        <button class="cat-tab" onclick="filterCat('副菜')">副菜</button>
         <button class="cat-tab" onclick="filterCat('ドリンク')">ドリンク</button>
         <button class="cat-tab" onclick="filterCat('デザート')">デザート</button>
         <button class="cat-tab" onclick="filterCat('その他')">その他</button>
@@ -117,12 +110,11 @@
       <div id="menuGrid" class="menu-grid"></div>
 
       <div class="excel-zone">
-        <label for="excelInput">📊 Excelファイルからメニューを読み込む</label>
+        <label for="excelInput">📊 Excelファイル（ラーメン屋メニュー管理シート.xlsx）を読み込む</label>
         <input type="file" id="excelInput" accept=".xlsx, .xls">
       </div>
     </div>
 
-    <!-- 右：伝票 -->
     <div class="panel">
       <h2>
         <span>伝票</span>
@@ -142,7 +134,6 @@
     </div>
   </div>
 
-  <!-- オプション選択モーダル -->
   <div class="modal-overlay" id="modalOverlay">
     <div class="modal">
       <h3 id="modalItemName" style="color:#f59e0b;">お好み・コール選択</h3>
@@ -154,21 +145,18 @@
     </div>
   </div>
 
-  <!-- 会計専用モーダル画面 -->
   <div class="checkout-modal" id="checkoutModal">
     <div class="checkout-header">
       <h2 style="border:none; font-size:22px; margin:0;">💰 お会計手続き</h2>
       <button onclick="closeCheckoutModal()" style="background:#475569; color:white; border:none; padding:8px 16px; border-radius:6px; font-size:16px; cursor:pointer;">伝票に戻る</button>
     </div>
 
-    <!-- 決済方法切り替え -->
     <div class="pay-method-tabs">
       <button class="pay-tab-btn active cash-tab" id="tabCashBtn" onclick="switchPayMethod('cash')">💵 現金決済</button>
       <button class="pay-tab-btn paypay-tab" id="tabPaypayBtn" onclick="switchPayMethod('paypay')">📱 PayPay決済</button>
     </div>
 
     <div class="pay-content">
-      <!-- 左：サマリー情報 -->
       <div class="pay-summary">
         <div>
           <div class="sum-row">
@@ -190,7 +178,6 @@
         </div>
       </div>
 
-      <!-- 右：現金テンキー または PayPay案内 -->
       <div id="cashKeypadArea" class="keypad-panel">
         <div class="quick-cash-row">
           <button class="quick-btn" onclick="quickCash('exact')">ちょうど</button>
@@ -223,7 +210,6 @@
     </div>
   </div>
 
-  <!-- Firebase SDK -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -240,18 +226,15 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // デフォルトメニュー
     const defaultMenu = [
-      { name: "豚骨醤油ラーメン", price: 850, cat: "ラーメン", options: ["麺硬め", "味濃いめ", "油多め", "ニンニクマシ", "ヤサイマシ"], color: "#FFEDD5" },
-      { name: "特製豚骨醤油", price: 1100, cat: "ラーメン", options: ["麺硬め", "味濃いめ", "油多め", "ニンニクマシ"], color: "#FED7AA" },
-      { name: "【限定】濃厚海老味噌", price: 1050, cat: "LTO", options: ["並盛", "大盛", "ニンニクマシ"], color: "#FDE047" },
-      { name: "味玉", price: 120, cat: "トッピング", options: [], color: "#DCFCE7" },
-      { name: "チャーシュー増し", price: 300, cat: "トッピング", options: [], color: "#DCFCE7" },
-      { name: "餃子(5個)", price: 380, cat: "副菜", options: ["よく焼き"], color: "#E2E8F0" },
-      { name: "ライス", price: 150, cat: "副菜", options: ["大盛", "普通", "半ライス"], color: "#FEF3C7" },
-      { name: "生ビール", price: 550, cat: "ドリンク", options: [], color: "#BAE6FD" },
-      { name: "黒烏龍茶", price: 250, cat: "ドリンク", options: ["氷あり", "氷なし"], color: "#E0F2FE" },
-      { name: "杏仁豆腐", price: 280, cat: "デザート", options: [], color: "#F3E8FF" }
+      { name: "塩", price: 1200, cat: "ラーメン", options: ["にんにくなし", "にんにくマシ"], color: "#FFFFFF" },
+      { name: "醤油", price: 1200, cat: "ラーメン", options: ["にんにくなし", "にんにくマシ"], color: "#EA9999" },
+      { name: "豚骨", price: 1200, cat: "ラーメン", options: ["にんにくなし", "にんにくマシ"], color: "#F9CB9C" },
+      { name: "白きくらげ", price: 2000, cat: "LTO", options: ["きくらげマシ"], color: "#FFFFFF" },
+      { name: "キムチ", price: 50, cat: "トッピング", options: [], color: "#F4CCCC" },
+      { name: "唐揚げ", price: 200, cat: "副菜", options: ["レモン"], color: "#6D9EEB" },
+      { name: "コーラ", price: 100, cat: "ドリンク", options: [], color: "#C27BA0" },
+      { name: "エプロン", price: 0, cat: "その他", options: ["KIDS"], color: "#FFFFFF" }
     ];
 
     let menuItems = JSON.parse(localStorage.getItem("pos_ramen_menu")) || defaultMenu;
@@ -263,11 +246,10 @@
     let currentPayMethod = "cash";
     let enteredCashStr = "0";
 
-    // カテゴリフィルター
     window.filterCat = (cat) => {
       currentCat = cat;
       document.querySelectorAll(".cat-tab").forEach(tab => {
-        tab.classList.toggle("active", tab.innerText.includes(cat) || (cat === "すべて" && tab.innerText === "すべて"));
+        tab.classList.toggle("active", tab.innerText.trim() === cat);
       });
       renderMenu();
     };
@@ -368,7 +350,6 @@
       renderCart();
     };
 
-    // 会計モーダル展開
     document.getElementById("openCheckoutModalBtn").onclick = () => {
       const total = cart.reduce((sum, i) => sum + i.price, 0);
       document.getElementById("modalTotal").innerText = `¥${total.toLocaleString()}`;
@@ -455,7 +436,7 @@
       }
     }
 
-    // Excel読み込み処理
+    // Excel読み込み（2行目以降の全データを確実に取得）
     document.getElementById("excelInput").addEventListener("change", (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -469,7 +450,8 @@
           const range = XLSX.utils.decode_range(sheet['!ref']);
           const newItems = [];
 
-          for (let R = 4; R <= range.e.r; ++R) {
+          // 0行目（1行目）から最後まで走査
+          for (let R = 0; R <= range.e.r; ++R) {
             const cellA = sheet[XLSX.utils.encode_cell({c: 0, r: R})];
             const cellB = sheet[XLSX.utils.encode_cell({c: 1, r: R})];
             const cellC = sheet[XLSX.utils.encode_cell({c: 2, r: R})];
@@ -478,30 +460,37 @@
             if (!cellA || !cellB) continue;
 
             const name = String(cellA.v || "").trim();
-            const price = parseInt(cellB.v);
+            const priceRaw = String(cellB.v || "").replace(/[¥,]/g, "").trim();
+            const price = parseInt(priceRaw, 10);
+
+            // ヘッダーや空行をスキップ
+            if (!name || isNaN(price)) continue;
+            if (name.includes("商品名") || name.includes("メニュー")) continue;
+
             const cat = cellC ? String(cellC.v || "").trim() : "ラーメン";
             const optsStr = cellD ? String(cellD.v || "").trim() : "";
             const options = optsStr ? optsStr.split(/[,、]/).map(s => s.trim()).filter(Boolean) : [];
 
+            // 色の取得
             let color = "#FFFFFF";
             if (cellA.s && cellA.s.fgColor && cellA.s.fgColor.rgb) {
-              color = "#" + cellA.s.fgColor.rgb.slice(-6);
+              const hex = cellA.s.fgColor.rgb;
+              if (hex !== "00000000") color = "#" + hex.slice(-6);
             } else if (cellA.s && cellA.s.fill && cellA.s.fill.fgColor && cellA.s.fill.fgColor.rgb) {
-              color = "#" + cellA.s.fill.fgColor.rgb.slice(-6);
+              const hex = cellA.s.fill.fgColor.rgb;
+              if (hex !== "00000000") color = "#" + hex.slice(-6);
             }
 
-            if (name && !isNaN(price)) {
-              newItems.push({ name, price, cat, options, color });
-            }
+            newItems.push({ name, price, cat, options, color });
           }
 
           if (newItems.length > 0) {
             menuItems = newItems;
             localStorage.setItem("pos_ramen_menu", JSON.stringify(menuItems));
             renderMenu();
-            alert(`Excelから ${newItems.length} 件のメニューを読み込みました！`);
+            alert(`メニューを読み込みました！（全 ${newItems.length} 件）\n塩・醤油・豚骨も正常に登録されました！`);
           } else {
-            alert("商品データが見つかりませんでした。フォーマットを確認してください。");
+            alert("商品データが見つかりませんでした。");
           }
         } catch (err) {
           console.error(err);
@@ -519,7 +508,6 @@
       }
     };
 
-    // 注文送信
     window.submitOrder = async (payMethod) => {
       const total = cart.reduce((sum, i) => sum + i.price, 0);
       const cash = parseInt(enteredCashStr) || 0;
