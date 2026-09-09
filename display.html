@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>呼出モニター (Waiting / Pick Up)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #090d16;
+      color: #f8fafc;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      background: #111827;
+      padding: 14px 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #1f2937;
+    }
+    h1 {
+      font-size: 24px;
+      letter-spacing: 2px;
+      color: #f3f4f6;
+      font-weight: 800;
+    }
+    .sound-btn {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    /* 左右2分割レイアウト */
+    .screen-split {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1.2fr;
+      height: calc(100vh - 65px);
+    }
+    @media (max-width: 768px) {
+      .screen-split { grid-template-columns: 1fr; grid-template-rows: 1fr 1.5fr; }
+    }
+
+    /* セクション共通 */
+    .section-box {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+    .section-header {
+      text-align: center;
+      padding-bottom: 16px;
+      margin-bottom: 20px;
+      border-bottom: 2px solid;
+    }
+    .sec-en {
+      font-size: 38px;
+      font-weight: 900;
+      letter-spacing: 3px;
+      display: block;
+      line-height: 1.1;
+    }
+    .sec-ja {
+      font-size: 15px;
+      font-weight: 600;
+      color: #94a3b8;
+      margin-top: 4px;
+      display: block;
+    }
+
+    /* WAITING エリア (左) */
+    .box-waiting {
+      background: #0d1527;
+    }
+    .box-waiting .section-header {
+      border-color: #3b82f6;
+    }
+    .box-waiting .sec-en {
+      color: #60a5fa;
+    }
+    .waiting-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 14px;
+    }
+    .waiting-chip {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 14px 6px;
+      text-align: center;
+      font-size: 34px;
+      font-weight: 800;
+      color: #94a3b8;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+    }
+
+    /* PICK UP エリア (右) */
+    .box-pickup {
+      background: #111827;
+      border-left: 2px solid #1f2937;
+    }
+    .box-pickup .section-header {
+      border-color: #f59e0b;
+    }
+    .box-pickup .sec-en {
+      color: #fbbf24;
+    }
+    .pickup-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 20px;
+      align-content: flex-start;
+    }
+    .pickup-card {
+      background: #182234;
+      border: 3px solid #f59e0b;
+      border-radius: 16px;
+      padding: 24px 10px;
+      text-align: center;
+      box-shadow: 0 8px 24px rgba(245, 158, 11, 0.25);
+      animation: popIn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    @keyframes popIn {
+      0% { transform: scale(0.8); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .pickup-card .num {
+      font-size: 72px;
+      font-weight: 900;
+      color: #ffffff;
+      line-height: 1;
+    }
+    .pickup-card .sub {
+      font-size: 13px;
+      color: #fbbf24;
+      font-weight: bold;
+      margin-top: 8px;
+    }
+
+    .empty-txt {
+      text-align: center;
+      color: #475569;
+      font-size: 18px;
+      margin-top: 40px;
+      grid-column: 1 / -1;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🍜 出来上がり状況</h1>
+    <button id="soundBtn" class="sound-btn">🔊 音声を有効化</button>
+  </header>
+
+  <div class="screen-split">
+    <!-- 左側: WAITING（調理中・準備中） -->
+    <div class="section-box box-waiting">
+      <div class="section-header">
+        <span class="sec-en">WAITING</span>
+        <span class="sec-ja">調理中 / ご準備中</span>
+      </div>
+      <div id="waitingList" class="waiting-grid"></div>
+    </div>
+
+    <!-- 右側: PICK UP（お呼び出し中） -->
+    <div class="section-box box-pickup">
+      <div class="section-header">
+        <span class="sec-en">PICK UP</span>
+        <span class="sec-ja">お呼び出し中</span>
+      </div>
+      <div id="pickupList" class="pickup-grid"></div>
+    </div>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore, collection, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    // 読み上げ機能を確実に停止
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyD0AeO0NWqxcTYKO6aJPNJ8cNWpYGs-xvM",
+      authDomain: "my-order-app-a065c.firebaseapp.com",
+      projectId: "my-order-app-a065c",
+      storageBucket: "my-order-app-a065c.firebasestorage.app",
+      messagingSenderId: "874138476052",
+      appId: "1:874138476052:web:1341a638fdd9e77fb51101"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const waitingList = document.getElementById("waitingList");
+    const pickupList = document.getElementById("pickupList");
+
+    let knownPickupIds = new Set();
+    let isInitialLoad = true;
+
+    // 音声有効化ボタン
+    document.getElementById("soundBtn").onclick = function() {
+      this.style.background = "#16a34a";
+      this.innerText = "✓ 音声有効";
+      const a = new Audio();
+      a.play().catch(() => {});
+    };
+
+    // call.mp3 だけを鳴らす
+    function playChime() {
+      const audio = new Audio("sounds/call.mp3");
+      audio.play().catch(err => {
+        console.warn("音声を有効化ボタンを押してください", err);
+      });
+    }
+
+    // 1. WAITING（調理中 "cooking" または 厨房完了 "prepared"）
+    const qWaiting = query(
+      collection(db, "orders"), 
+      where("status", "in", ["cooking", "prepared"])
+    );
+
+    onSnapshot(qWaiting, (snapshot) => {
+      waitingList.innerHTML = "";
+      if (snapshot.empty) {
+        waitingList.innerHTML = '<div class="empty-txt">お待ちの注文はありません</div>';
+        return;
+      }
+      const docs = snapshot.docs.map(d => d.data()).sort((a, b) => a.orderNumber - b.orderNumber);
+      docs.forEach(data => {
+        const chip = document.createElement("div");
+        chip.className = "waiting-chip";
+        chip.innerText = data.orderNumber;
+        waitingList.appendChild(chip);
+      });
+    });
+
+    // 2. PICK UP（呼出中 "calling"）
+    const qPickup = query(
+      collection(db, "orders"), 
+      where("status", "==", "calling")
+    );
+
+    onSnapshot(qPickup, (snapshot) => {
+      pickupList.innerHTML = "";
+      if (snapshot.empty) {
+        pickupList.innerHTML = '<div class="empty-txt">現在呼び出し中の番号はありません</div>';
+        return;
+      }
+
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        const id = docSnap.id;
+
+        // 呼出が来たら call.mp3 だけを再生
+        if (!knownPickupIds.has(id)) {
+          knownPickupIds.add(id);
+          if (!isInitialLoad) {
+            playChime();
+          }
+        }
+
+        const card = document.createElement("div");
+        card.className = "pickup-card";
+        card.innerHTML = `
+          <div class="num">${data.orderNumber}</div>
+          <div class="sub">お受け取りください</div>
+        `;
+        pickupList.appendChild(card);
+      });
+
+      isInitialLoad = false;
+    });
+  </script>
+</body>
+</html>

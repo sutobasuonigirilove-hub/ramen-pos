@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ラーメンPOS システムポータル</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+    h1 {
+      font-size: 28px;
+      font-weight: 900;
+      color: #f59e0b;
+      margin-bottom: 8px;
+    }
+    p {
+      color: #94a3b8;
+      font-size: 15px;
+    }
+
+    .portal-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      width: 100%;
+      max-width: 640px;
+    }
+    @media (max-width: 500px) {
+      .portal-grid { grid-template-columns: 1fr; }
+    }
+
+    .mode-card {
+      background: #1e293b;
+      border: 2px solid #334155;
+      border-radius: 14px;
+      padding: 24px 20px;
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+    }
+    .mode-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+    }
+    .mode-card:active {
+      transform: scale(0.98);
+    }
+
+    /* 各モード別のアクセントカラー */
+    .card-regi:hover { border-color: #f97316; }
+    .card-kitchen:hover { border-color: #38bdf8; }
+    .card-presenter:hover { border-color: #a855f7; }
+    .card-display:hover { border-color: #22c55e; }
+
+    .icon {
+      font-size: 44px;
+      margin-bottom: 12px;
+    }
+    .title {
+      font-size: 18px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+    .desc {
+      font-size: 13px;
+      color: #94a3b8;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🍜 店舗オペレーション選択</h1>
+    <p>この端末で使用する役割（モード）を選択してください</p>
+  </header>
+
+  <main class="portal-grid">
+    <!-- 1. レジ画面 -->
+    <a href="regi.html" class="mode-card card-regi">
+      <div class="icon">🛒</div>
+      <div class="title" style="color: #f97316;">レジ・注文入力</div>
+      <div class="desc">注文受付、トッピング選択、現金・PayPayの会計処理</div>
+    </a>
+
+    <!-- 2. 厨房画面 -->
+    <a href="kitchen.html" class="mode-card card-kitchen">
+      <div class="icon">🍳</div>
+      <div class="title" style="color: #38bdf8;">厨房モニター</div>
+      <div class="desc">調理中の注文管理、商品・お好み（コール）の確認</div>
+    </a>
+
+    <!-- 3. プレゼンター画面 -->
+    <a href="presenter.html" class="mode-card card-presenter">
+      <div class="icon">🛎️</div>
+      <div class="title" style="color: #c084fc;">プレゼンター</div>
+      <div class="desc">配膳完了商品の呼び出し、受取完了と伝票消去</div>
+    </a>
+
+    <!-- 4. お客様呼出モニター -->
+    <a href="display.html" class="mode-card card-display">
+      <div class="icon">📺</div>
+      <div class="title" style="color: #4ade80;">呼出モニター</div>
+      <div class="desc">客席向け大型表示（Waiting / Pick Up）とチャイム再生</div>
+    </a>
+  </main>
+
+</body>
+</html>

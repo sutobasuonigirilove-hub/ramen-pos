@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>ラーメン屋POSレジ</title>
+  <!-- SheetJS: Excel読込ライブラリ -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --primary: #d97706;
+      --success: #16a34a;
+      --danger: #dc2626;
+      --paypay: #ff0033;
+      --bg: #0f172a;
+      --card: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 12px; touch-action: manipulation; }
+    .container { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; }
+    @media (max-width: 800px) { .container { grid-template-columns: 1fr; } }
+
+    .panel { background: var(--card); padding: 16px; border-radius: 12px; border: 1px solid var(--border); }
+    h2 { font-size: 16px; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+
+    /* カテゴリタブ */
+    .cat-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 12px; }
+    .cat-tab { background: #334155; color: #cbd5e1; border: none; padding: 8px 14px; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; white-space: nowrap; }
+    .cat-tab.active { background: #ea580c; color: white; }
+
+    /* メニューグリッド */
+    .menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; max-height: 520px; overflow-y: auto; }
+    .menu-item-btn {
+      border: 1px solid rgba(0,0,0,0.15); border-radius: 8px; padding: 14px 6px; text-align: center; cursor: pointer;
+      display: flex; flex-direction: column; justify-content: space-between; min-height: 85px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    .menu-item-btn:active { transform: scale(0.96); }
+    .item-name-txt { font-weight: bold; font-size: 14px; color: #0f172a; line-height: 1.2; margin-bottom: 4px; }
+    .item-price-txt { font-size: 14px; font-weight: 800; color: #1e293b; }
+
+    /* 伝票 */
+    .order-list { min-height: 280px; max-height: 380px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; background: #0b1120; margin-bottom: 12px; }
+    .order-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 10px; border-bottom: 1px solid #1e293b; font-size: 15px; }
+    .del-item { color: var(--danger); cursor: pointer; font-weight: bold; padding: 0 8px; font-size: 18px; }
+
+    .total-bar { display: flex; justify-content: space-between; align-items: baseline; background: #182234; padding: 14px; border-radius: 8px; margin-bottom: 10px; }
+    .open-pay-btn { width: 100%; background: #ea580c; color: white; border: none; padding: 16px; border-radius: 8px; font-size: 20px; font-weight: bold; cursor: pointer; }
+    .open-pay-btn:disabled { background: #475569; }
+
+    .excel-zone { border: 1px dashed var(--border); border-radius: 8px; padding: 8px; text-align: center; margin-top: 12px; background: #131d2e; }
+    .excel-zone label { cursor: pointer; color: #38bdf8; font-size: 13px; font-weight: bold; }
+    .excel-zone input { display: none; }
+
+    /* オプション選択モーダル */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: none; justify-content: center; align-items: center; z-index: 1000; }
+    .modal { background: #1e293b; border: 1px solid var(--border); border-radius: 12px; width: 90%; max-width: 440px; padding: 20px; }
+    .modal-opts { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; max-height: 250px; overflow-y: auto; }
+    .opt-btn { background: #334155; color: #f8fafc; border: 1px solid #475569; padding: 10px 14px; border-radius: 20px; cursor: pointer; font-size: 14px; }
+    .opt-btn.selected { background: #ea580c; border-color: #f97316; font-weight: bold; }
+
+    /* 会計専用フルスクリーンモーダル (iPad想定) */
+    .checkout-modal {
+      position: fixed; inset: 0; background: #0f172a; z-index: 2000; display: none; flex-direction: column; padding: 20px; max-width: 900px; margin: 0 auto;
+    }
+    .checkout-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--border); padding-bottom: 12px; margin-bottom: 16px; }
+    .pay-method-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+    .pay-tab-btn { padding: 16px; font-size: 18px; font-weight: bold; border-radius: 10px; border: 2px solid var(--border); background: #1e293b; color: white; cursor: pointer; }
+    .pay-tab-btn.active.cash-tab { background: #15803d; border-color: #22c55e; }
+    .pay-tab-btn.active.paypay-tab { background: var(--paypay); border-color: #ff4d6d; }
+
+    .pay-content { flex: 1; display: grid; grid-template-columns: 1fr 1.2fr; gap: 20px; }
+    @media (max-width: 600px) { .pay-content { grid-template-columns: 1fr; } }
+
+    /* 会計サマリー */
+    .pay-summary { background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid var(--border); display: flex; flex-direction: column; justify-content: space-around; }
+    .sum-row { display: flex; justify-content: space-between; font-size: 18px; margin-bottom: 10px; }
+    .sum-val { font-size: 28px; font-weight: 900; }
+
+    /* iPad用テンキー */
+    .keypad-panel { display: flex; flex-direction: column; gap: 8px; }
+    .quick-cash-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .quick-btn { background: #334155; color: white; border: none; padding: 12px 4px; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; }
+    .numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; flex: 1; }
+    .num-key { background: #1e293b; border: 1px solid var(--border); color: white; font-size: 24px; font-weight: bold; border-radius: 8px; display: flex; justify-content: center; align-items: center; min-height: 54px; cursor: pointer; }
+    .num-key:active { background: #334155; }
+
+    /* 決済完了ボタン */
+    .submit-order-btn { width: 100%; border: none; padding: 18px; border-radius: 10px; font-size: 22px; font-weight: 900; cursor: pointer; color: white; margin-top: 12px; }
+    .btn-cash { background: var(--success); }
+    .btn-cash:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+    .btn-paypay { background: var(--paypay); }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- 左：メニュー選択 -->
+    <div class="panel">
+      <h2>
+        <span>🍜 メニュー注文</span>
+        <button id="resetMenuBtn" style="background:none; border:none; color:#64748b; font-size:12px; cursor:pointer;">初期化</button>
+      </h2>
+
+      <div class="cat-tabs" id="catTabs">
+        <button class="cat-tab active" onclick="filterCat('すべて')">すべて</button>
+        <button class="cat-tab" onclick="filterCat('LTO')">LTO(限定)</button>
+        <button class="cat-tab" onclick="filterCat('ラーメン')">ラーメン</button>
+        <button class="cat-tab" onclick="filterCat('トッピング')">トッピング</button>
+        <button class="cat-tab" onclick="filterCat('副菜')">副菜(サイド)</button>
+        <button class="cat-tab" onclick="filterCat('ドリンク')">ドリンク</button>
+        <button class="cat-tab" onclick="filterCat('デザート')">デザート</button>
+        <button class="cat-tab" onclick="filterCat('その他')">その他</button>
+      </div>
+
+      <div id="menuGrid" class="menu-grid"></div>
+
+      <div class="excel-zone">
+        <label for="excelInput">📊 Excelファイルからメニューを読み込む</label>
+        <input type="file" id="excelInput" accept=".xlsx, .xls">
+      </div>
+    </div>
+
+    <!-- 右：伝票 -->
+    <div class="panel">
+      <h2>
+        <span>伝票</span>
+        <span style="font-size: 14px; color:#94a3b8;">注文# <input type="number" id="orderNum" value="1" style="width:60px; background:#0b1120; color:white; border:1px solid #334155; padding:2px; font-size:16px;"></span>
+      </h2>
+
+      <div id="cartList" class="order-list">
+        <div style="padding: 40px; text-align: center; color: #64748b;">商品を選択してください</div>
+      </div>
+
+      <div class="total-bar">
+        <span style="font-size:16px;">合計金額</span>
+        <span style="font-size:28px; font-weight:900; color:#f59e0b;" id="cartTotalDisplay">¥0</span>
+      </div>
+
+      <button id="openCheckoutModalBtn" class="open-pay-btn" disabled>お会計に進む</button>
+    </div>
+  </div>
+
+  <!-- オプション選択モーダル -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <h3 id="modalItemName" style="color:#f59e0b;">お好み・コール選択</h3>
+      <div class="modal-opts" id="modalOpts"></div>
+      <div style="display:flex; gap:10px;">
+        <button id="modalConfirmBtn" style="flex:1; background:#ea580c; color:white; border:none; padding:12px; border-radius:6px; font-weight:bold; cursor:pointer;">決定して伝票へ</button>
+        <button onclick="closeModal()" style="background:#475569; color:white; border:none; padding:12px 18px; border-radius:6px; cursor:pointer;">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 会計専用モーダル画面 -->
+  <div class="checkout-modal" id="checkoutModal">
+    <div class="checkout-header">
+      <h2 style="border:none; font-size:22px; margin:0;">💰 お会計手続き</h2>
+      <button onclick="closeCheckoutModal()" style="background:#475569; color:white; border:none; padding:8px 16px; border-radius:6px; font-size:16px; cursor:pointer;">伝票に戻る</button>
+    </div>
+
+    <!-- 決済方法切り替え -->
+    <div class="pay-method-tabs">
+      <button class="pay-tab-btn active cash-tab" id="tabCashBtn" onclick="switchPayMethod('cash')">💵 現金決済</button>
+      <button class="pay-tab-btn paypay-tab" id="tabPaypayBtn" onclick="switchPayMethod('paypay')">📱 PayPay決済</button>
+    </div>
+
+    <div class="pay-content">
+      <!-- 左：サマリー情報 -->
+      <div class="pay-summary">
+        <div>
+          <div class="sum-row">
+            <span>ご請求額:</span>
+            <span class="sum-val" style="color:#f59e0b;" id="modalTotal">¥0</span>
+          </div>
+          <div class="sum-row" id="cashReceivedRow">
+            <span>お預かり:</span>
+            <span class="sum-val" style="color:#38bdf8;" id="modalCash">¥0</span>
+          </div>
+          <div class="sum-row" id="cashChangeRow">
+            <span>お釣り:</span>
+            <span class="sum-val" style="color:#4ade80;" id="modalChange">¥0</span>
+          </div>
+        </div>
+
+        <div id="actionArea">
+          <button id="completeCashBtn" class="submit-order-btn btn-cash" disabled onclick="submitOrder('現金')">会計完了 & 注文送信</button>
+        </div>
+      </div>
+
+      <!-- 右：現金テンキー または PayPay案内 -->
+      <div id="cashKeypadArea" class="keypad-panel">
+        <div class="quick-cash-row">
+          <button class="quick-btn" onclick="quickCash('exact')">ちょうど</button>
+          <button class="quick-btn" onclick="quickCash(1000)">+1,000円</button>
+          <button class="quick-btn" onclick="quickCash(5000)">+5,000円</button>
+          <button class="quick-btn" onclick="quickCash(10000)">+10,000円</button>
+        </div>
+        <div class="numpad">
+          <button class="num-key" onclick="pressKey('7')">7</button>
+          <button class="num-key" onclick="pressKey('8')">8</button>
+          <button class="num-key" onclick="pressKey('9')">9</button>
+          <button class="num-key" onclick="pressKey('4')">4</button>
+          <button class="num-key" onclick="pressKey('5')">5</button>
+          <button class="num-key" onclick="pressKey('6')">6</button>
+          <button class="num-key" onclick="pressKey('1')">1</button>
+          <button class="num-key" onclick="pressKey('2')">2</button>
+          <button class="num-key" onclick="pressKey('3')">3</button>
+          <button class="num-key" onclick="pressKey('0')">0</button>
+          <button class="num-key" onclick="pressKey('00')">00</button>
+          <button class="num-key" style="background:#dc2626;" onclick="pressKey('C')">C</button>
+        </div>
+      </div>
+
+      <div id="paypayGuideArea" style="display:none; background:#1e293b; border-radius:12px; border:1px solid var(--border); padding:30px; text-align:center; flex-direction:column; justify-content:center; align-items:center;">
+        <div style="font-size:60px; margin-bottom:10px;">📱</div>
+        <h3 style="font-size:22px; color:#ff4d6d; margin-bottom:8px;">PayPayでのお支払い</h3>
+        <p style="color:#94a3b8; font-size:15px; margin-bottom:24px;">レジ横のQRコードをお客様に読み取ってもらい、<br>金額（<strong style="color:white;" id="paypayAmountText">¥0</strong>）を確認してください。</p>
+        <button class="submit-order-btn btn-paypay" onclick="submitOrder('PayPay')">PayPay決済完了 & 注文送信</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyD0AeO0NWqxcTYKO6aJPNJ8cNWpYGs-xvM",
+      authDomain: "my-order-app-a065c.firebaseapp.com",
+      projectId: "my-order-app-a065c",
+      storageBucket: "my-order-app-a065c.firebasestorage.app",
+      messagingSenderId: "874138476052",
+      appId: "1:874138476052:web:1341a638fdd9e77fb51101"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // デフォルトメニュー
+    const defaultMenu = [
+      { name: "豚骨醤油ラーメン", price: 850, cat: "ラーメン", options: ["麺硬め", "味濃いめ", "油多め", "ニンニクマシ", "ヤサイマシ"], color: "#FFEDD5" },
+      { name: "特製豚骨醤油", price: 1100, cat: "ラーメン", options: ["麺硬め", "味濃いめ", "油多め", "ニンニクマシ"], color: "#FED7AA" },
+      { name: "【限定】濃厚海老味噌", price: 1050, cat: "LTO", options: ["並盛", "大盛", "ニンニクマシ"], color: "#FDE047" },
+      { name: "味玉", price: 120, cat: "トッピング", options: [], color: "#DCFCE7" },
+      { name: "チャーシュー増し", price: 300, cat: "トッピング", options: [], color: "#DCFCE7" },
+      { name: "餃子(5個)", price: 380, cat: "副菜", options: ["よく焼き"], color: "#E2E8F0" },
+      { name: "ライス", price: 150, cat: "副菜", options: ["大盛", "普通", "半ライス"], color: "#FEF3C7" },
+      { name: "生ビール", price: 550, cat: "ドリンク", options: [], color: "#BAE6FD" },
+      { name: "黒烏龍茶", price: 250, cat: "ドリンク", options: ["氷あり", "氷なし"], color: "#E0F2FE" },
+      { name: "杏仁豆腐", price: 280, cat: "デザート", options: [], color: "#F3E8FF" }
+    ];
+
+    let menuItems = JSON.parse(localStorage.getItem("pos_ramen_menu")) || defaultMenu;
+    let currentCat = "すべて";
+    let cart = [];
+    let pendingItem = null;
+    let selectedOpts = [];
+
+    let currentPayMethod = "cash";
+    let enteredCashStr = "0";
+
+    // カテゴリフィルター
+    window.filterCat = (cat) => {
+      currentCat = cat;
+      document.querySelectorAll(".cat-tab").forEach(tab => {
+        tab.classList.toggle("active", tab.innerText.includes(cat) || (cat === "すべて" && tab.innerText === "すべて"));
+      });
+      renderMenu();
+    };
+
+    function renderMenu() {
+      const grid = document.getElementById("menuGrid");
+      grid.innerHTML = "";
+      const filtered = currentCat === "すべて" ? menuItems : menuItems.filter(i => i.cat === currentCat);
+
+      filtered.forEach(item => {
+        const btn = document.createElement("div");
+        btn.className = "menu-item-btn";
+        btn.style.backgroundColor = item.color || "#FFFFFF";
+        btn.innerHTML = `
+          <div class="item-name-txt">${item.name}</div>
+          <div class="item-price-txt">¥${Number(item.price).toLocaleString()}</div>
+        `;
+        btn.onclick = () => handleItemClick(item);
+        grid.appendChild(btn);
+      });
+    }
+
+    function handleItemClick(item) {
+      if (item.options && item.options.length > 0) {
+        pendingItem = item;
+        selectedOpts = [];
+        document.getElementById("modalItemName").innerText = `【${item.name}】のお好み選択`;
+        const optsContainer = document.getElementById("modalOpts");
+        optsContainer.innerHTML = "";
+
+        item.options.forEach(opt => {
+          const btn = document.createElement("button");
+          btn.className = "opt-btn";
+          btn.innerText = opt;
+          btn.onclick = () => {
+            btn.classList.toggle("selected");
+            if (btn.classList.contains("selected")) selectedOpts.push(opt);
+            else selectedOpts = selectedOpts.filter(o => o !== opt);
+          };
+          optsContainer.appendChild(btn);
+        });
+
+        document.getElementById("modalOverlay").style.display = "flex";
+      } else {
+        addToCart(item, []);
+      }
+    }
+
+    window.closeModal = () => {
+      document.getElementById("modalOverlay").style.display = "none";
+      pendingItem = null;
+    };
+
+    document.getElementById("modalConfirmBtn").onclick = () => {
+      if (pendingItem) addToCart(pendingItem, [...selectedOpts]);
+      closeModal();
+    };
+
+    function addToCart(item, options) {
+      cart.push({ name: item.name, price: item.price, options: options });
+      renderCart();
+    }
+
+    function renderCart() {
+      const list = document.getElementById("cartList");
+      const openBtn = document.getElementById("openCheckoutModalBtn");
+
+      if (cart.length === 0) {
+        list.innerHTML = '<div style="padding: 40px; text-align: center; color: #64748b;">商品を選択してください</div>';
+        document.getElementById("cartTotalDisplay").innerText = "¥0";
+        openBtn.disabled = true;
+        return;
+      }
+
+      list.innerHTML = "";
+      let total = 0;
+      cart.forEach((item, index) => {
+        total += item.price;
+        const row = document.createElement("div");
+        row.className = "order-row";
+        const optHtml = item.options.length > 0 ? `<br><small style="color:#f59e0b;">└ ${item.options.join(", ")}</small>` : "";
+        row.innerHTML = `
+          <div><strong>${item.name}</strong>${optHtml}</div>
+          <div>
+            <span>¥${item.price.toLocaleString()}</span>
+            <span class="del-item" onclick="removeItem(${index})">×</span>
+          </div>
+        `;
+        list.appendChild(row);
+      });
+
+      document.getElementById("cartTotalDisplay").innerText = `¥${total.toLocaleString()}`;
+      openBtn.disabled = false;
+    }
+
+    window.removeItem = (idx) => {
+      cart.splice(idx, 1);
+      renderCart();
+    };
+
+    // 会計モーダル展開
+    document.getElementById("openCheckoutModalBtn").onclick = () => {
+      const total = cart.reduce((sum, i) => sum + i.price, 0);
+      document.getElementById("modalTotal").innerText = `¥${total.toLocaleString()}`;
+      document.getElementById("paypayAmountText").innerText = `¥${total.toLocaleString()}`;
+      enteredCashStr = "0";
+      switchPayMethod("cash");
+      updateCashDisplay();
+      document.getElementById("checkoutModal").style.display = "flex";
+    };
+
+    window.closeCheckoutModal = () => {
+      document.getElementById("checkoutModal").style.display = "none";
+    };
+
+    window.switchPayMethod = (method) => {
+      currentPayMethod = method;
+      const tabCash = document.getElementById("tabCashBtn");
+      const tabPaypay = document.getElementById("tabPaypayBtn");
+      const cashArea = document.getElementById("cashKeypadArea");
+      const paypayArea = document.getElementById("paypayGuideArea");
+      const actionArea = document.getElementById("actionArea");
+      const cashRow = document.getElementById("cashReceivedRow");
+      const changeRow = document.getElementById("cashChangeRow");
+
+      if (method === "cash") {
+        tabCash.classList.add("active");
+        tabPaypay.classList.remove("active");
+        cashArea.style.display = "flex";
+        paypayArea.style.display = "none";
+        actionArea.style.display = "block";
+        cashRow.style.display = "flex";
+        changeRow.style.display = "flex";
+      } else {
+        tabCash.classList.remove("active");
+        tabPaypay.classList.add("active");
+        cashArea.style.display = "none";
+        paypayArea.style.display = "flex";
+        actionArea.style.display = "none";
+        cashRow.style.display = "none";
+        changeRow.style.display = "none";
+      }
+    };
+
+    window.pressKey = (key) => {
+      if (key === "C") {
+        enteredCashStr = "0";
+      } else if (key === "00") {
+        if (enteredCashStr !== "0") enteredCashStr += "00";
+      } else {
+        if (enteredCashStr === "0") enteredCashStr = key;
+        else enteredCashStr += key;
+      }
+      updateCashDisplay();
+    };
+
+    window.quickCash = (type) => {
+      const total = cart.reduce((sum, i) => sum + i.price, 0);
+      if (type === "exact") {
+        enteredCashStr = String(total);
+      } else {
+        const current = parseInt(enteredCashStr) || 0;
+        enteredCashStr = String(current + type);
+      }
+      updateCashDisplay();
+    };
+
+    function updateCashDisplay() {
+      const total = cart.reduce((sum, i) => sum + i.price, 0);
+      const cash = parseInt(enteredCashStr) || 0;
+      const change = cash - total;
+
+      document.getElementById("modalCash").innerText = `¥${cash.toLocaleString()}`;
+      const changeEl = document.getElementById("modalChange");
+      const completeBtn = document.getElementById("completeCashBtn");
+
+      if (cash >= total) {
+        changeEl.innerText = `¥${change.toLocaleString()}`;
+        changeEl.style.color = "#4ade80";
+        completeBtn.disabled = false;
+      } else {
+        changeEl.innerText = `不足 ¥${Math.abs(change).toLocaleString()}`;
+        changeEl.style.color = "#f87171";
+        completeBtn.disabled = true;
+      }
+    }
+
+    // Excel読み込み処理
+    document.getElementById("excelInput").addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const data = new Uint8Array(evt.target.result);
+          const workbook = XLSX.read(data, { type: 'array', cellStyles: true });
+          const sheet = workbook.Sheets[workbook.SheetNames[0]];
+          const range = XLSX.utils.decode_range(sheet['!ref']);
+          const newItems = [];
+
+          for (let R = 4; R <= range.e.r; ++R) {
+            const cellA = sheet[XLSX.utils.encode_cell({c: 0, r: R})];
+            const cellB = sheet[XLSX.utils.encode_cell({c: 1, r: R})];
+            const cellC = sheet[XLSX.utils.encode_cell({c: 2, r: R})];
+            const cellD = sheet[XLSX.utils.encode_cell({c: 3, r: R})];
+
+            if (!cellA || !cellB) continue;
+
+            const name = String(cellA.v || "").trim();
+            const price = parseInt(cellB.v);
+            const cat = cellC ? String(cellC.v || "").trim() : "ラーメン";
+            const optsStr = cellD ? String(cellD.v || "").trim() : "";
+            const options = optsStr ? optsStr.split(/[,、]/).map(s => s.trim()).filter(Boolean) : [];
+
+            let color = "#FFFFFF";
+            if (cellA.s && cellA.s.fgColor && cellA.s.fgColor.rgb) {
+              color = "#" + cellA.s.fgColor.rgb.slice(-6);
+            } else if (cellA.s && cellA.s.fill && cellA.s.fill.fgColor && cellA.s.fill.fgColor.rgb) {
+              color = "#" + cellA.s.fill.fgColor.rgb.slice(-6);
+            }
+
+            if (name && !isNaN(price)) {
+              newItems.push({ name, price, cat, options, color });
+            }
+          }
+
+          if (newItems.length > 0) {
+            menuItems = newItems;
+            localStorage.setItem("pos_ramen_menu", JSON.stringify(menuItems));
+            renderMenu();
+            alert(`Excelから ${newItems.length} 件のメニューを読み込みました！`);
+          } else {
+            alert("商品データが見つかりませんでした。フォーマットを確認してください。");
+          }
+        } catch (err) {
+          console.error(err);
+          alert("Excelの解析に失敗しました。");
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    document.getElementById("resetMenuBtn").onclick = () => {
+      if (confirm("メニューを初期状態に戻しますか？")) {
+        menuItems = defaultMenu;
+        localStorage.setItem("pos_ramen_menu", JSON.stringify(menuItems));
+        renderMenu();
+      }
+    };
+
+    // 注文送信
+    window.submitOrder = async (payMethod) => {
+      const total = cart.reduce((sum, i) => sum + i.price, 0);
+      const cash = parseInt(enteredCashStr) || 0;
+      const orderNum = parseInt(document.getElementById("orderNum").value);
+
+      try {
+        await addDoc(collection(db, "orders"), {
+          orderNumber: orderNum,
+          items: cart,
+          totalPrice: total,
+          paymentMethod: payMethod,
+          cashReceived: payMethod === "現金" ? cash : total,
+          change: payMethod === "現金" ? Math.max(0, cash - total) : 0,
+          status: "cooking",
+          createdAt: serverTimestamp()
+        });
+
+        alert(`【注文 #${orderNum}】${payMethod} での決済が完了しました！`);
+        closeCheckoutModal();
+        cart = [];
+        document.getElementById("orderNum").value = orderNum + 1;
+        renderCart();
+      } catch (err) {
+        console.error(err);
+        alert("送信に失敗しました");
+      }
+    };
+
+    renderMenu();
+  </script>
+</body>
+</html>
