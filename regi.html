@@ -85,6 +85,129 @@
     .btn-cash { background: var(--success); }
     .btn-cash:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
     .btn-paypay { background: var(--paypay); }
+
+    /* =========================================================
+       写真デザイン完全再現：レシートレイアウト
+       ========================================================= */
+    #receiptContainer { display: none; }
+
+    @media print {
+      @page {
+        margin: 0;
+        size: 80mm auto; /* 58mm〜80mmサーマルロール対応 */
+      }
+      body {
+        background: #fff !important;
+        color: #000 !important;
+      }
+      body * {
+        visibility: hidden;
+      }
+      #receiptContainer, #receiptContainer * {
+        visibility: visible;
+      }
+      #receiptContainer {
+        display: block !important;
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 72mm; /* 印字可能領域 */
+        margin: 0 auto;
+        padding: 4mm 2mm;
+        color: #000;
+        background: #fff;
+        font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "MS Gothic", monospace;
+      }
+
+      .rc-header-meta {
+        font-size: 9px;
+        line-height: 1.3;
+        margin-bottom: 6px;
+      }
+      .rc-badge-box {
+        display: flex;
+        justify-content: center;
+        margin: 4px 0 8px;
+      }
+      .rc-badge {
+        border: 1px dashed #000;
+        padding: 2px 16px;
+        font-size: 11px;
+        letter-spacing: 2px;
+      }
+      .rc-call-section {
+        border-top: 1px solid #000;
+        border-bottom: 1px solid #000;
+        padding: 6px 0;
+        text-align: center;
+        margin-bottom: 6px;
+      }
+      .rc-call-title {
+        font-size: 16px;
+        font-weight: bold;
+        letter-spacing: 1px;
+      }
+      .rc-call-number {
+        font-size: 34px;
+        font-weight: 900;
+        line-height: 1.1;
+        letter-spacing: 2px;
+      }
+      .rc-shop-contact {
+        font-size: 10px;
+        line-height: 1.3;
+        margin-bottom: 8px;
+      }
+      .rc-table-head {
+        font-size: 10px;
+        border-bottom: 1px dashed #000;
+        padding-bottom: 3px;
+        margin-bottom: 4px;
+      }
+      .rc-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+      }
+      .rc-table td {
+        padding: 2px 0;
+        vertical-align: top;
+      }
+      .rc-col-name { width: 55%; }
+      .rc-col-qty { width: 15%; text-align: center; }
+      .rc-col-price { width: 30%; text-align: right; }
+      .rc-option-line {
+        font-size: 9px;
+        padding-left: 8px;
+        color: #333;
+      }
+      .rc-dashed-line {
+        border-top: 1px dashed #000;
+        margin: 6px 0;
+      }
+      .rc-calc-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        line-height: 1.5;
+      }
+      .rc-total-row {
+        font-size: 14px;
+        font-weight: bold;
+        margin: 3px 0;
+      }
+      .rc-tax-line {
+        font-size: 9px;
+        text-align: right;
+        margin-bottom: 4px;
+      }
+      .rc-footer-msg {
+        text-align: center;
+        font-size: 9px;
+        margin-top: 12px;
+        padding-bottom: 10mm; /* プリンターのカット余白 */
+      }
+    }
   </style>
 </head>
 <body>
@@ -103,7 +226,6 @@
         <button class="cat-tab" onclick="filterCat('トッピング')">トッピング</button>
         <button class="cat-tab" onclick="filterCat('副菜')">副菜</button>
         <button class="cat-tab" onclick="filterCat('ドリンク')">ドリンク</button>
-        <button class="cat-tab" onclick="filterCat('デザート')">デザート</button>
         <button class="cat-tab" onclick="filterCat('その他')">その他</button>
       </div>
 
@@ -118,7 +240,7 @@
     <div class="panel">
       <h2>
         <span>伝票</span>
-        <span style="font-size: 14px; color:#94a3b8;">注文# <input type="number" id="orderNum" value="1" style="width:60px; background:#0b1120; color:white; border:1px solid #334155; padding:2px; font-size:16px;"></span>
+        <span style="font-size: 14px; color:#94a3b8;">注文# <input type="number" id="orderNum" value="101" style="width:60px; background:#0b1120; color:white; border:1px solid #334155; padding:2px; font-size:16px;"></span>
       </h2>
 
       <div id="cartList" class="order-list">
@@ -209,6 +331,9 @@
       </div>
     </div>
   </div>
+
+  <!-- 写真デザイン完全準拠レシート -->
+  <div id="receiptContainer"></div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -436,7 +561,6 @@
       }
     }
 
-    // Excel読み込み（2行目以降の全データを確実に取得）
     document.getElementById("excelInput").addEventListener("change", (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -450,7 +574,6 @@
           const range = XLSX.utils.decode_range(sheet['!ref']);
           const newItems = [];
 
-          // 0行目（1行目）から最後まで走査
           for (let R = 0; R <= range.e.r; ++R) {
             const cellA = sheet[XLSX.utils.encode_cell({c: 0, r: R})];
             const cellB = sheet[XLSX.utils.encode_cell({c: 1, r: R})];
@@ -463,7 +586,6 @@
             const priceRaw = String(cellB.v || "").replace(/[¥,]/g, "").trim();
             const price = parseInt(priceRaw, 10);
 
-            // ヘッダーや空行をスキップ
             if (!name || isNaN(price)) continue;
             if (name.includes("商品名") || name.includes("メニュー")) continue;
 
@@ -471,7 +593,6 @@
             const optsStr = cellD ? String(cellD.v || "").trim() : "";
             const options = optsStr ? optsStr.split(/[,、]/).map(s => s.trim()).filter(Boolean) : [];
 
-            // 色の取得
             let color = "#FFFFFF";
             if (cellA.s && cellA.s.fgColor && cellA.s.fgColor.rgb) {
               const hex = cellA.s.fgColor.rgb;
@@ -488,9 +609,7 @@
             menuItems = newItems;
             localStorage.setItem("pos_ramen_menu", JSON.stringify(menuItems));
             renderMenu();
-            alert(`メニューを読み込みました！（全 ${newItems.length} 件）\n塩・醤油・豚骨も正常に登録されました！`);
-          } else {
-            alert("商品データが見つかりませんでした。");
+            alert(`メニューを読み込みました！（全 ${newItems.length} 件）`);
           }
         } catch (err) {
           console.error(err);
@@ -508,25 +627,133 @@
       }
     };
 
+    // =========================================================
+    // 写真デザイン完全再現：レシートHTML生成 & 印字
+    // =========================================================
+    function printReceipt(orderData) {
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+      const receiptNo = `POS01-${String(orderData.orderNumber).padStart(6, '0')}`;
+
+      // 数量集計
+      let itemRowsHtml = "";
+      orderData.items.forEach(item => {
+        const optHtml = (item.options && item.options.length > 0) 
+          ? `<div class="rc-option-line">＞ ${item.options.join(", ")}</div>` 
+          : "";
+        
+        itemRowsHtml += `
+          <tr>
+            <td class="rc-col-name">${item.name}${optHtml}</td>
+            <td class="rc-col-qty">1</td>
+            <td class="rc-col-price">¥${item.price.toLocaleString()}</td>
+          </tr>
+        `;
+      });
+
+      // 内税10%の計算
+      const taxIncluded = Math.round(orderData.totalPrice * 10 / 110);
+
+      const receiptEl = document.getElementById("receiptContainer");
+      receiptEl.innerHTML = `
+        <div class="rc-header-meta">
+          自家製麺 ラーメン亭<br>
+          ${dateStr} レシート番号[${receiptNo}]
+        </div>
+
+        <div class="rc-badge-box">
+          <div class="rc-badge">領 収 書</div>
+        </div>
+
+        <div class="rc-call-section">
+          <div class="rc-call-title">お渡し番号</div>
+          <div class="rc-call-number">${orderData.orderNumber}</div>
+        </div>
+
+        <div class="rc-shop-contact">
+          店舗へのお問い合わせ<br>
+          店舗：03-1234-5678
+        </div>
+
+        <div class="rc-table-head">
+          <table style="width:100%;">
+            <tr>
+              <td class="rc-col-name">[Eat-In]<br>メニュー</td>
+              <td class="rc-col-qty" style="vertical-align:bottom;">数量</td>
+              <td class="rc-col-price" style="vertical-align:bottom;">金額</td>
+            </tr>
+          </table>
+        </div>
+
+        <table class="rc-table">
+          ${itemRowsHtml}
+        </table>
+
+        <div class="rc-dashed-line"></div>
+
+        <div class="rc-calc-row rc-total-row">
+          <span>支払金額</span>
+          <span>¥${orderData.totalPrice.toLocaleString()}</span>
+        </div>
+        <div class="rc-tax-line">[税率]10% (内消費税等 ¥${taxIncluded.toLocaleString()})</div>
+
+        <div class="rc-calc-row">
+          <span>${orderData.paymentMethod}決済</span>
+          <span>¥${orderData.totalPrice.toLocaleString()}</span>
+        </div>
+
+        ${orderData.paymentMethod === "現金" ? `
+          <div class="rc-calc-row">
+            <span>お預かり</span>
+            <span>¥${orderData.cashReceived.toLocaleString()}</span>
+          </div>
+          <div class="rc-calc-row">
+            <span>お釣り</span>
+            <span>¥${orderData.change.toLocaleString()}</span>
+          </div>
+        ` : ''}
+
+        <div class="rc-dashed-line"></div>
+
+        <div class="rc-footer-msg">
+          お渡し番号をお呼びするまで席でお待ちください。<br>
+          ご来店ありがとうございます。
+        </div>
+      `;
+
+      // 印刷実行
+      setTimeout(() => {
+        window.print();
+      }, 50);
+    }
+
+    // 会計確定処理
     window.submitOrder = async (payMethod) => {
       const total = cart.reduce((sum, i) => sum + i.price, 0);
       const cash = parseInt(enteredCashStr) || 0;
       const orderNum = parseInt(document.getElementById("orderNum").value);
+      const currentCart = [...cart];
+
+      const orderData = {
+        orderNumber: orderNum,
+        items: currentCart,
+        totalPrice: total,
+        paymentMethod: payMethod,
+        cashReceived: payMethod === "現金" ? cash : total,
+        change: payMethod === "現金" ? Math.max(0, cash - total) : 0,
+        status: "cooking",
+        createdAt: serverTimestamp()
+      };
 
       try {
-        await addDoc(collection(db, "orders"), {
-          orderNumber: orderNum,
-          items: cart,
-          totalPrice: total,
-          paymentMethod: payMethod,
-          cashReceived: payMethod === "現金" ? cash : total,
-          change: payMethod === "現金" ? Math.max(0, cash - total) : 0,
-          status: "cooking",
-          createdAt: serverTimestamp()
-        });
+        await addDoc(collection(db, "orders"), orderData);
 
-        alert(`【注文 #${orderNum}】${payMethod} での決済が完了しました！`);
         closeCheckoutModal();
+
+        // 写真レイアウトのレシートを即時自動印刷
+        printReceipt(orderData);
+
+        // カートクリアと次回注文番号の繰り上げ
         cart = [];
         document.getElementById("orderNum").value = orderNum + 1;
         renderCart();
